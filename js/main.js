@@ -331,12 +331,13 @@ const pMat = new THREE.ShaderMaterial({
     uIntro: { value: 0 },
     uDisperse: { value: 0 },
     uMouse: { value: new THREE.Vector2(99, 99) },
+    uMouseK: { value: 0 }, // 0..1 strength of the pointer push, eased so particles glide back
     uPR: { value: renderer.getPixelRatio() },
     uColA: { value: new THREE.Vector3(0.89, 0.55, 0.04) },
     uColB: { value: new THREE.Vector3(1.0, 0.93, 0.62) },
   },
   vertexShader: /* glsl */`
-    uniform float uTime, uIntro, uDisperse, uPR;
+    uniform float uTime, uIntro, uDisperse, uPR, uMouseK;
     uniform vec2 uMouse;
     attribute vec3 aDir;
     attribute float aRand;
@@ -362,7 +363,7 @@ const pMat = new THREE.ShaderMaterial({
 
       // mouse repulsion
       vec2 dm = wp.xy - uMouse;
-      float f = smoothstep(1.6, 0.0, length(dm)) * k;
+      float f = smoothstep(1.6, 0.0, length(dm)) * k * uMouseK;
       wp.xy += normalize(dm + 1e-4) * f * 0.7;
 
       vec4 mv = viewMatrix * wp;
@@ -524,7 +525,8 @@ layout();
    ========================================================= */
 const MAX = PROJECTS.length; // 0 = home, 1..N = projects
 const state = { target: 0, current: 0, prev: 0, velocity: 0, intro: 0, loaded: false, panel: null };
-const mouse = { x: -200, y: -200, nx: 9, ny: 9, sx: 0, sy: 0, world: new THREE.Vector2(99, 99) };
+// active: a mouse is over the page, or a finger is touching the screen. k eases toward it.
+const mouse = { x: -200, y: -200, nx: 9, ny: 9, sx: 0, sy: 0, world: new THREE.Vector2(99, 99), active: false, k: 0 };
 let snapTimer;
 
 function go(v) {
@@ -557,10 +559,21 @@ canvas.addEventListener('pointerdown', (e) => {
   drag.on = true; drag.x = e.clientX; drag.y = e.clientY; drag.moved = 0;
   clearTimeout(snapTimer);
 });
-addEventListener('pointermove', (e) => {
+function trackPointer(e) {
   mouse.x = e.clientX; mouse.y = e.clientY;
   mouse.nx = (e.clientX / innerWidth) * 2 - 1;
   mouse.ny = -(e.clientY / innerHeight) * 2 + 1;
+}
+// a finger only counts while it is down; a mouse counts while it is over the page
+addEventListener('pointerdown', (e) => { trackPointer(e); mouse.active = true; });
+const releaseTouch = (e) => { if (e.pointerType !== 'mouse') mouse.active = false; };
+addEventListener('pointerup', releaseTouch);
+addEventListener('pointercancel', releaseTouch);
+document.documentElement.addEventListener('pointerleave', () => { mouse.active = false; });
+addEventListener('blur', () => { mouse.active = false; });
+addEventListener('pointermove', (e) => {
+  trackPointer(e);
+  if (e.pointerType === 'mouse' || e.buttons) mouse.active = true;
   if (!drag.on) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   drag.x = e.clientX; drag.y = e.clientY;
@@ -772,10 +785,12 @@ function frame() {
   if (state.loaded) state.intro = Math.min(1, state.intro + 0.006);
 
   // mouse smoothing
-  const inView = Math.abs(mouse.nx) <= 1;
+  const inView = mouse.active && Math.abs(mouse.nx) <= 1;
   mouse.sx = lerp(mouse.sx, inView ? mouse.nx : 0, 0.06);
   mouse.sy = lerp(mouse.sy, inView ? mouse.ny : 0, 0.06);
-  mouse.world.set(mouse.nx * view.w / 2, mouse.ny * view.h / 2);
+  // push strength fades in/out; while fading out the push stays where it was, so particles ease back
+  mouse.k = lerp(mouse.k, inView ? 1 : 0, inView ? 0.15 : 0.05);
+  if (inView) mouse.world.set(mouse.nx * view.w / 2, mouse.ny * view.h / 2);
 
   // camera parallax
   camera.position.x = lerp(camera.position.x, mouse.sx * 0.35, 0.1);
@@ -788,6 +803,7 @@ function frame() {
   pMat.uniforms.uIntro.value = state.intro;
   pMat.uniforms.uDisperse.value = disperse;
   pMat.uniforms.uMouse.value.copy(mouse.world);
+  pMat.uniforms.uMouseK.value = mouse.k;
   // car spins slowly on a turntable; the whole stage tilts toward the viewer
   orb.rotation.y = -0.6 + t * 0.22 + mouse.sx * 0.5;
   orbGroup.rotation.x = 0.32 - mouse.sy * 0.15;
