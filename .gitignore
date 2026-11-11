@@ -1,0 +1,12 @@
+# Full-size original photos (~20 MB, some show the license plate).
+# The site uses the resized copies in assets/img/.
+Media/
+
+# Generated upload folder — rebuilt from index.html, css/, js/ and assets/.
+deploy/
+
+# OS / editor clutter
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.tmp

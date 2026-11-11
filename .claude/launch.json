@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "site",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [".claude/serve.py", "5173"],
+      "port": 5173
+    },
+    {
+      "name": "deploy-test",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5174", "--directory", "deploy"],
+      "port": 5174
+    }
+  ]
+}

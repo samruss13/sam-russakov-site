@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sam Russakov</title>
+  <meta name="description" content="Sam Russakov — analytical, detail-oriented and committed to doing the work right.">
+  <meta name="theme-color" content="#0b0a09">
+  <link rel="icon" href="assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+  </script>
+</head>
+<body>
+
+  <!-- Loader -->
+  <div id="loader" aria-hidden="true">
+    <div class="loader-inner">
+      <img src="assets/logo.png" alt="" class="loader-logo">
+      <div class="loader-count"><span id="loader-num">000</span><span class="loader-unit">MPH</span></div>
+      <div class="loader-bar"><i id="loader-bar"></i></div>
+      <p class="label">Getting up to speed</p>
+    </div>
+  </div>
+
+  <canvas id="gl"></canvas>
+  <div class="vignette"></div>
+  <div class="grain"></div>
+
+  <!-- Top HUD -->
+  <header class="hud-top">
+    <button class="brand" data-nav="home" aria-label="Home" data-hover>
+      <img src="assets/logo.png" alt="SR logo">
+      <span class="label">Sam<br>Russakov</span>
+    </button>
+    <nav class="nav">
+      <button data-nav="work" data-hover>Strengths</button>
+      <button data-nav="about" data-hover>About</button>
+      <button data-nav="contact" data-hover>Contact</button>
+    </nav>
+    <button class="menu-btn" aria-label="Open menu" data-hover><span></span><span></span></button>
+  </header>
+
+  <!-- Home copy -->
+  <section class="home-copy">
+    <p class="label reveal"><span>Analytical · Detail-oriented · Committed</span></p>
+    <h1>
+      <span class="line"><span>Built to perform.</span></span>
+      <span class="line"><em>Driven by detail.</em></span>
+    </h1>
+    <p class="home-sub reveal"><span>I bring the discipline I've built on the track, on the road and at the workbench to every project: careful preparation, steady effort and a focus on getting the details right. Scroll to see how.</span></p>
+    <button class="cta" data-nav="work" data-hover>
+      <span>See my approach</span>
+      <i class="cta-arrow">→</i>
+    </button>
+  </section>
+
+  <!-- Work HUD -->
+  <section class="work-hud" aria-live="polite">
+    <p class="label work-index"><span id="work-num">01</span> / <span id="work-total">04</span></p>
+    <h2 class="work-title split" id="work-title"></h2>
+    <div class="work-meta label">
+      <span id="work-cat"></span><span class="dot"></span><span id="work-year"></span>
+    </div>
+    <button class="cta" id="work-open" data-hover>
+      <span>Read more</span>
+      <i class="cta-arrow">→</i>
+    </button>
+  </section>
+
+  <!-- Progress rail -->
+  <div class="rail" id="rail"></div>
+
+  <div class="scroll-hint label"><span>Scroll</span><i></i></div>
+
+  <!-- Project panel -->
+  <aside class="panel" id="panel-project" aria-hidden="true">
+    <button class="panel-close label" data-close data-hover>Close <i>×</i></button>
+    <div class="panel-inner">
+      <p class="label" id="pp-kicker"></p>
+      <h2 class="panel-title" id="pp-title"></h2>
+      <div class="pp-hero"><img id="pp-hero" alt=""></div>
+      <div class="pp-grid">
+        <dl class="pp-meta">
+          <div><dt class="label">Category</dt><dd id="pp-cat"></dd></div>
+          <div><dt class="label">Year</dt><dd id="pp-year"></dd></div>
+          <div><dt class="label">Role</dt><dd id="pp-role"></dd></div>
+        </dl>
+        <div class="pp-body" id="pp-body"></div>
+      </div>
+      <div class="pp-gallery" id="pp-gallery"></div>
+      <button class="pp-next" id="pp-next" data-hover>
+        <span class="label">Next strength</span>
+        <span class="pp-next-title" id="pp-next-title"></span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- About panel -->
+  <aside class="panel" id="panel-about" aria-hidden="true">
+    <button class="panel-close label" data-close data-hover>Close <i>×</i></button>
+    <div class="panel-inner about">
+      <div class="about-photo"><img src="assets/img/portrait.jpg" alt="Portrait"></div>
+      <div class="about-copy">
+        <p class="label">About</p>
+        <h2 class="panel-title">Hi, I'm <em>Sam Russakov</em>.</h2>
+        <p class="lead">I'm analytical, detail-oriented and committed to doing the work right. I prepare carefully, learn quickly and hold myself to a high standard from the first step to the finish.</p>
+        <p>Outside of work, I build those habits on the track, on long runs and at the workbench. Each one rewards preparation, patience and steady improvement, and I bring the same mindset to every team and project I'm part of.</p>
+        <ul class="stats">
+          <li><span class="stat-num">04</span><span class="label">Core strengths</span></li>
+          <li><span class="stat-num">02</span><span class="label">Professional certifications</span></li>
+          <li><span class="stat-num">∞</span><span class="label">Room to improve</span></li>
+        </ul>
+        <div class="certs">
+          <p class="label">Certifications</p>
+          <ul>
+            <li><a class="cert-name" href="https://www.linkedin.com/learning/certificates/d1bb8b26d3bbbaf8ffa8849ee7f29a3e8a19ffec2b53fb60dcf9f356c03ea391" target="_blank" rel="noopener" data-hover>Product Management <i class="cert-arrow">↗</i></a><span class="label">Aha! · LinkedIn Learning</span></li>
+            <li><a class="cert-name" href="https://www.linkedin.com/learning/certificates/d8084809ab130d89e7f933f4f98891119a3c083d29c7c1cb6ad30b9ecca6cd2a" target="_blank" rel="noopener" data-hover>Social Media Marketing <i class="cert-arrow">↗</i></a><span class="label">Hootsuite · LinkedIn Learning</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Contact panel -->
+  <aside class="panel" id="panel-contact" aria-hidden="true">
+    <button class="panel-close label" data-close data-hover>Close <i>×</i></button>
+    <div class="panel-inner contact">
+      <p class="label">Contact</p>
+      <h2 class="panel-title">Let's <em>talk</em>.</h2>
+      <p class="contact-intro">I'm open to new opportunities in product, marketing and communications, bringing 10+ years of hands-on, customer-facing experience. Email is the best way to reach me.</p>
+      <div class="contact-mail-row">
+        <a class="contact-mail" href="mailto:sam.russakov@gmail.com" data-hover>sam.russakov@gmail.com</a>
+        <button class="copy-btn" type="button" data-copy="sam.russakov@gmail.com" data-hover>Copy</button>
+      </div>
+      <p class="label contact-loc">Based in Huntington Beach, CA</p>
+      <div class="contact-actions">
+        <a class="cta" href="assets/Sam-Russakov-Resume.pdf" download="Sam-Russakov-Resume.pdf" data-hover>
+          <span>Download résumé</span>
+          <i class="cta-arrow">↓</i>
+        </a>
+        <ul class="socials">
+          <li><a href="https://www.linkedin.com/in/samuel-russakov-55b377239" target="_blank" rel="noopener" data-hover>LinkedIn</a></li>
+        </ul>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Mobile menu -->
+  <div class="menu-overlay" id="menu">
+    <nav>
+      <button data-nav="home"><span class="label">00</span>Home</button>
+      <button data-nav="work"><span class="label">01</span>Strengths</button>
+      <button data-nav="about"><span class="label">02</span>About</button>
+      <button data-nav="contact"><span class="label">03</span>Contact</button>
+    </nav>
+  </div>
+
+  <!-- Cursor -->
+  <div class="cursor" aria-hidden="true">
+    <div class="cursor-ring"><span class="cursor-text"></span></div>
+    <div class="cursor-dot"></div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
