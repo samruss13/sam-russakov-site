@@ -42,12 +42,13 @@ const PROJECTS = [
     ],
   },
   {
-    title: 'The Rig',
+    title: 'The Build',
     cat: 'Problem Solving',
     role: 'Hands-on',
     img: 'assets/img/pc-build.jpg',
     gallery: ['assets/img/pc-build-2.jpg'],
     ratio: '4 / 3', // show photos at full 4:3 so nothing is cropped top/bottom
+    heroRatio: '10 / 9', // first photo is taller; show the whole case
     body: [
       'Research first, then build it right.',
       'Building this computer from individual parts meant defining what it needed to do, researching every component, checking compatibility and staying within a budget before a single screw went in. I approach professional projects the same way: understand the requirements, plan carefully, then execute.',
@@ -700,7 +701,7 @@ function openProject(i) {
   $('#pp-hero').alt = p.title;
   const pos = p.focus ? `${p.focus[0] * 100}% ${p.focus[1] * 100}%` : '50% 50%';
   $('#pp-hero').style.objectPosition = pos;
-  $('.pp-hero').style.aspectRatio = p.ratio || '';
+  $('.pp-hero').style.aspectRatio = p.heroRatio || p.ratio || '';
   $('#pp-cat').textContent = p.cat;
   $('#pp-year').textContent = p.year || '';
   $('#pp-year').parentElement.hidden = !p.year;
