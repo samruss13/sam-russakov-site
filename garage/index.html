@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Sam Russakov · The Garage</title>
+  <meta name="description" content="Sam Russakov — analytical, detail-oriented and committed. Step into the garage, or take a car out on the track.">
+  <meta name="theme-color" content="#0b0a09">
+  <link rel="icon" href="../assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="garage.css">
+  <script type="importmap">
+    { "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    } }
+  </script>
+</head>
+<body>
+
+  <!-- Loader -->
+  <div id="loader" aria-hidden="true">
+    <div class="loader-inner">
+      <img src="../assets/logo.png" alt="" class="loader-logo">
+      <div class="loader-count"><span id="loader-num">000</span><span class="loader-unit">MPH</span></div>
+      <div class="loader-bar"><i id="loader-bar"></i></div>
+      <p class="label">Opening the garage</p>
+    </div>
+  </div>
+
+  <canvas id="gl"></canvas>
+  <div class="grain"></div>
+  <div class="fade" id="fade"></div>
+
+  <!-- Top bar -->
+  <header class="top">
+    <a class="brand" href="./" aria-label="Sam Russakov, garage home">
+      <img src="../assets/logo.png" alt="SR logo">
+      <span class="label">Sam<br>Russakov</span>
+    </a>
+    <a class="label top-link" href="../">Classic site <i>↗</i></a>
+  </header>
+
+  <!-- Scroll track: four stops, the 3D camera follows -->
+  <main class="stops" aria-hidden="true">
+    <div class="stop"></div><div class="stop"></div><div class="stop"></div><div class="stop"></div>
+  </main>
+
+  <!-- 00 Outside -->
+  <section class="copy" data-stop="0">
+    <p class="label kicker">Analytical · Detail-oriented · Committed</p>
+    <h1>Built to perform.<br><em>Driven by detail.</em></h1>
+    <p class="sub">I bring the discipline I've built on the track, on the road and at the workbench to every project: careful preparation, steady effort and a focus on getting the details right. The door's open, come in.</p>
+    <p class="label hint">Scroll to step inside <i></i></p>
+  </section>
+
+  <!-- 01 Strengths -->
+  <section class="copy" data-stop="1">
+    <p class="label kicker"><span class="num">01</span> Strengths</p>
+    <h2>On the <em>wall.</em></h2>
+    <ol class="strengths" id="strengths"></ol>
+  </section>
+
+  <!-- 02 About -->
+  <section class="copy copy-about" data-stop="2">
+    <p class="label kicker"><span class="num">02</span> About</p>
+    <h2>Hi, I'm <em>Sam Russakov</em>.</h2>
+    <p class="sub">I'm analytical, detail-oriented and committed to doing the work right. I prepare carefully, learn quickly and hold myself to a high standard from the first step to the finish.</p>
+    <div class="certs">
+      <p class="label">Certifications</p>
+      <ul>
+        <li><a class="cert-name" href="https://www.linkedin.com/learning/certificates/d1bb8b26d3bbbaf8ffa8849ee7f29a3e8a19ffec2b53fb60dcf9f356c03ea391" target="_blank" rel="noopener">Product Management <i>↗</i></a><span class="label">Aha! · LinkedIn Learning</span></li>
+        <li><a class="cert-name" href="https://www.linkedin.com/learning/certificates/d8084809ab130d89e7f933f4f98891119a3c083d29c7c1cb6ad30b9ecca6cd2a" target="_blank" rel="noopener">Social Media Marketing <i>↗</i></a><span class="label">Hootsuite · LinkedIn Learning</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 03 Contact -->
+  <section class="copy copy-contact" data-stop="3">
+    <p class="label kicker"><span class="num">03</span> Contact</p>
+    <h2>Let's <em>talk</em>.</h2>
+    <p class="sub">I'm open to new opportunities in product, marketing and communications, bringing 10+ years of hands-on, customer-facing experience. Email is the best way to reach me.</p>
+    <div class="mail-row">
+      <a class="mail" href="mailto:sam.russakov@gmail.com">sam.russakov@gmail.com</a>
+      <button class="copy-btn" type="button" data-copy="sam.russakov@gmail.com">Copy</button>
+    </div>
+    <p class="label loc">Based in Huntington Beach, CA</p>
+    <div class="actions">
+      <a class="btn ghost" href="../assets/Sam-Russakov-Resume.pdf" download="Sam-Russakov-Resume.pdf">Download résumé <i>↓</i></a>
+      <a class="btn ghost" href="https://www.linkedin.com/in/samuel-russakov-55b377239" target="_blank" rel="noopener">LinkedIn <i>↗</i></a>
+    </div>
+    <button class="btn gold spin" type="button" data-open-picker><span class="key">D</span> Take one for a spin</button>
+  </section>
+
+  <!-- Bottom nav -->
+  <nav class="bottom" aria-label="Sections">
+    <button data-go="1"><span>Strengths</span></button>
+    <button data-go="2"><span>About</span></button>
+    <button data-go="3"><span>Contact</span></button>
+    <button data-open-picker class="nav-drive"><span>Drive</span></button>
+    <i class="progress" id="progress"></i>
+  </nav>
+
+  <!-- Strength panel -->
+  <aside class="panel" id="panel" aria-hidden="true">
+    <button class="panel-close label" data-close>Close <i>×</i></button>
+    <div class="panel-inner">
+      <p class="label" id="pp-kicker"></p>
+      <h2 class="panel-title" id="pp-title"></h2>
+      <div class="pp-hero"><img id="pp-hero" alt=""></div>
+      <div class="pp-grid">
+        <dl class="pp-meta">
+          <div><dt class="label">Category</dt><dd id="pp-cat"></dd></div>
+          <div><dt class="label">Trait</dt><dd id="pp-role"></dd></div>
+        </dl>
+        <div class="pp-body" id="pp-body"></div>
+      </div>
+      <div class="pp-gallery" id="pp-gallery"></div>
+      <button class="pp-next" id="pp-next">
+        <span class="label">Next strength</span>
+        <span class="pp-next-title" id="pp-next-title"></span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- Car picker -->
+  <div class="picker" id="picker" aria-hidden="true">
+    <div class="picker-inner">
+      <button class="panel-close label" data-close-picker>Close <i>×</i></button>
+      <p class="label kicker">Pick your car</p>
+      <h2>Willow Springs, <em>golden hour.</em></h2>
+      <p class="sub">A 2.5-mile desert circuit modelled on Big Willow. Pull out of the pit garage, cross the line and set a lap.</p>
+      <div class="cars" id="cars"></div>
+      <p class="label controls-note" id="controls-note">W A S D / arrows drive · Space handbrake · C camera · R reset · Esc park</p>
+    </div>
+  </div>
+
+  <!-- Drive HUD -->
+  <div class="hud" id="hud" aria-hidden="true">
+    <div class="hud-tl">
+      <button class="label hud-btn" id="hud-park">Park it <span class="kbd">Esc</span></button>
+      <button class="label hud-btn" id="hud-cam">Camera <span class="kbd">C</span></button>
+      <button class="label hud-btn" id="hud-reset">Reset <span class="kbd">R</span></button>
+    </div>
+    <div class="hud-laps">
+      <div><span class="label">Lap</span><b id="hud-cur">Cross the line</b></div>
+      <div><span class="label">Last</span><b id="hud-last">–:––.–</b></div>
+      <div><span class="label">Best</span><b id="hud-best">–:––.–</b></div>
+    </div>
+    <canvas id="minimap"></canvas>
+    <div class="hud-speed">
+      <div class="rpm"><i id="hud-rpm"></i></div>
+      <div class="speed-row"><span id="hud-speed">000</span><span class="unit">MPH</span><span class="gear" id="hud-gear">N</span></div>
+    </div>
+    <p class="hud-msg" id="hud-msg"></p>
+    <p class="label hud-keys">W A S D drive · Space handbrake</p>
+    <div class="touch" id="touch">
+      <div class="touch-l">
+        <button data-in="left" aria-label="Steer left">◀</button>
+        <button data-in="right" aria-label="Steer right">▶</button>
+      </div>
+      <div class="touch-r">
+        <button data-in="hand" class="small" aria-label="Handbrake">HB</button>
+        <button data-in="brake" aria-label="Brake">BRK</button>
+        <button data-in="gas" class="gas" aria-label="Accelerate">GAS</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="garage.js"></script>
+</body>
+</html>
