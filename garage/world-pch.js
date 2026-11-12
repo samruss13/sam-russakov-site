@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { PCH_PTS, COAST_PTS, PIER } from './pch-data.js';
-import { makeRnd, canvasTex, noiseFill, layer, makePath, strip, makeSky, envFromSky, makeGrid, obb, clamp } from './world-utils.js';
+import { STREETS } from './streets-data.js';
+import { makeRnd, canvasTex, noiseFill, layer, makePath, strip, makeSky, envFromSky, makeGrid, makeBoxGrid, obb, clamp } from './world-utils.js';
 
 /* =========================================================
    Pacific Coast Highway through Huntington Beach at sunset:
@@ -68,6 +69,77 @@ export function buildPCH(renderer, { isTouch }) {
   const lawnTex = canvasTex(256, 256, (c, w, h) => noiseFill(c, w, h, '#5d6a4c', 0.3, 12000, rnd), true);
   lawnTex.repeat.set(1, 1);
   scene.add(new THREE.Mesh(strip(path, WALK, 900, 0.004, null, 30), layer(new THREE.MeshStandardMaterial({ map: lawnTex, color: 0x9a9a8a, roughness: 1 }), -1)));
+
+  /* ---------- downtown streets: the real grid inland of PCH, all drivable ---------- */
+  const SC = 25, segCells = new Map();
+  const streets = STREETS.map(([hw, name, pts]) => ({ hw, name, P: pts.map(([x, z]) => new THREE.Vector2(x, z)) }));
+  for (const s of streets) {
+    for (let k = 0; k < s.P.length - 1; k++) {
+      const a = s.P[k], b = s.P[k + 1], sg = { a, b, hw: s.hw, name: s.name };
+      const pad = s.hw + 30;
+      for (let gx = Math.floor((Math.min(a.x, b.x) - pad) / SC); gx <= Math.floor((Math.max(a.x, b.x) + pad) / SC); gx++)
+        for (let gz = Math.floor((Math.min(a.y, b.y) - pad) / SC); gz <= Math.floor((Math.max(a.y, b.y) + pad) / SC); gz++) {
+          const key = gx + ',' + gz;
+          if (!segCells.has(key)) segCells.set(key, []);
+          segCells.get(key).push(sg);
+        }
+    }
+  }
+  // distance from (x, z) to the nearest street edge (< 0 = on the street), and which segment
+  function streetAt(x, z) {
+    const list = segCells.get(Math.floor(x / SC) + ',' + Math.floor(z / SC));
+    let d = Infinity, seg = null, u = 0;
+    if (list) for (const s of list) {
+      const dx = s.b.x - s.a.x, dz = s.b.y - s.a.y, l2 = dx * dx + dz * dz || 1;
+      const t = clamp(((x - s.a.x) * dx + (z - s.a.y) * dz) / l2, 0, 1);
+      const e = Math.hypot(x - (s.a.x + dx * t), z - (s.a.y + dz * t)) - s.hw;
+      if (e < d) { d = e; seg = s; u = t; }
+    }
+    return { d, seg, u };
+  }
+  const streetDist = (x, z) => streetAt(x, z).d;
+  // flat ribbons along every street (mitred at bends); uv from world position so overlaps line up
+  function ribbons(list, width, y) {
+    const pos = [], uv = [], nrm = [], idx = [];
+    for (const s of list) {
+      const P = s.P, w = width(s), base = pos.length / 3;
+      for (let i = 0; i < P.length; i++) {
+        const a = P[Math.max(i - 1, 0)], b = P[Math.min(i + 1, P.length - 1)];
+        let tx = b.x - a.x, tz = b.y - a.y; const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+        let m = 1;
+        if (i > 0 && i < P.length - 1) { const ix = P[i].x - P[i - 1].x, iz = P[i].y - P[i - 1].y, il = Math.hypot(ix, iz) || 1; m = 1 / Math.max((ix / il) * tx + (iz / il) * tz, 0.5); }
+        const nx = tz * w * m, nz = -tx * w * m;
+        pos.push(P[i].x + nx, y, P[i].y + nz, P[i].x - nx, y, P[i].y - nz);
+        uv.push((P[i].x + nx) / 7, (P[i].y + nz) / 7, (P[i].x - nx) / 7, (P[i].y - nz) / 7);
+        nrm.push(0, 1, 0, 0, 1, 0);
+        if (i < P.length - 1) { const k = base + i * 2; idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3); }
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nrm, 3));
+    g.setIndex(idx);
+    return g;
+  }
+  {
+    const cityAsphalt = canvasTex(256, 256, (c, w, h) => noiseFill(c, w, h, '#444447', 0.2, 9000, rnd), true);
+    const side = (m) => { m.side = THREE.DoubleSide; return m; };
+    scene.add(new THREE.Mesh(ribbons(streets, (s) => s.hw + 2.6, 0.012), side(layer(new THREE.MeshStandardMaterial({ color: 0xb4ada2, roughness: 0.9 }), -2))));
+    const road = new THREE.Mesh(ribbons(streets, (s) => s.hw, 0.018), side(layer(new THREE.MeshStandardMaterial({ map: cityAsphalt, roughness: 0.88 }), -3)));
+    road.receiveShadow = true;
+    scene.add(road);
+    // double yellow centre line on the bigger streets
+    const big = streets.filter((s) => s.hw >= 6.5);
+    scene.add(new THREE.Mesh(ribbons(big, () => 0.28, 0.024), side(layer(new THREE.MeshStandardMaterial({ color: 0xd8b33a, roughness: 0.6 }), -4))));
+  }
+  // is this point downtown (near Main St and the pier)? cached on a coarse grid
+  const dtCache = new Map();
+  const downtownAt = (x, z) => {
+    const key = Math.floor(x / 40) + ',' + Math.floor(z / 40);
+    if (!dtCache.has(key)) { const n = path.nearest(x, z); dtCache.set(key, Math.abs(sOf(n.i) - sOf(mainIdx)) < 430 && n.lat < 360); }
+    return dtCache.get(key);
+  };
 
   const asphaltTex = canvasTex(256, 256, (c, w, h) => noiseFill(c, w, h, '#3f3f42', 0.2, 9000, rnd), true);
   asphaltTex.repeat.set(3, 1);
@@ -231,11 +303,28 @@ export function buildPCH(renderer, { isTouch }) {
     for (let s = 6; s < path.length - 6; s += 22) spots.push([Math.round(s / ds), (rnd() - 0.5) * 0.6, 0.45]);            // median
     for (let s = 10; s < path.length - 10; s += 28) spots.push([Math.round(s / ds), WALK - 1.2, 0.45]);                      // inland sidewalk
     for (let s = 20; s < path.length - 20; s += 36) { if (rnd() < 0.7) spots.push([Math.round(s / ds), (LOT1 + BIKE0) / 2, 0.45]); } // between lot and bike path
-    const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), spots.length);
-    spots.forEach(([i, lat, r], n) => {
+    // world positions; leave openings where city streets meet PCH
+    const where = [];
+    for (const [i, lat] of spots) {
       const p = at(clamp(i, 0, N - 1), lat);
+      if (streetDist(p.x, p.z) < (Math.abs(lat) < 3 ? 9 : 2)) continue;
+      where.push(p);
+    }
+    // palm-lined Main Street
+    for (const s of streets) {
+      if (s.name !== 'Main Street') continue;
+      for (let k = 0; k < s.P.length - 1; k++) {
+        const a = s.P[k], b = s.P[k + 1], len = a.distanceTo(b), tx = (b.x - a.x) / len, tz = (b.y - a.y) / len;
+        for (let u = 9; u < len - 4; u += 18) for (const sd of [1, -1]) {
+          const x = a.x + tx * u + tz * sd * (s.hw + 1.3), z = a.y + tz * u - tx * sd * (s.hw + 1.3);
+          if (streetDist(x, z) > 0.6 && path.distTo(x, z) > WALK + 2) where.push(new THREE.Vector3(x, 0, z));
+        }
+      }
+    }
+    const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }), where.length);
+    where.forEach((p, n) => {
       place(inst, n, p, rnd() * 6.28, 0.8 + rnd() * 0.45);
-      grid.add(p.x, p.z, r);
+      grid.add(p.x, p.z, 0.45);
     });
     inst.castShadow = true;
     scene.add(inst);
@@ -251,6 +340,7 @@ export function buildPCH(renderer, { isTouch }) {
     let n = 0, h = 0;
     for (let s = 30; s < path.length - 10; s += 55) {
       const i = Math.round(s / ds), p = at(i, 0.6), yaw = yawAt(i) + Math.PI / 2;
+      if (streetDist(p.x, p.z) < 9) continue; // keep the median open at junctions
       place(inst, n++, p, yaw, 1);
       for (const sg of [1, -1]) { const hp = at(i, 0.6 + sg * 3.0, 9.6); place(heads, h++, hp, yaw, 1); }
       grid.add(p.x, p.z, 0.3);
@@ -382,7 +472,8 @@ export function buildPCH(renderer, { isTouch }) {
     // signal mast arms on both sides, all green
     for (const sg of [1, -1]) {
       const g = new THREE.Group();
-      g.position.copy(at(idx, sg * (WALK - 1)));
+      // on the corners, clear of the side street
+      g.position.copy(at(clamp(idx + Math.round((sg * 11) / ds), 0, N - 1), sg * (WALK - 1)));
       g.rotation.y = yaw + (sg > 0 ? -Math.PI / 2 : Math.PI / 2);
       const mat = new THREE.MeshLambertMaterial({ color: 0x6c6f73 });
       const post = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 7, 8), mat); post.position.y = 3.5; g.add(post);
@@ -427,31 +518,108 @@ export function buildPCH(renderer, { isTouch }) {
     const geo = new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0);
     const list = [];
     const pal = [0xe9dccb, 0xd9c7b0, 0xcfd7d4, 0xe6d3c3, 0xbfcfd9, 0xe8e2d6, 0xd7b8a5, 0xc9d6c3];
+    const homes = [0xf1e6d2, 0xdfe7ea, 0xe9d2c0, 0xd7e3d0, 0xf0dcc8, 0xc9d9e6, 0xe8e0d0, 0xd9cbb8, 0xbcd0c4];
+    const occ = makeGrid(30); // footprints already used
+    // a building fits if it clears every street + sidewalk, PCH, and its neighbours
+    const fits = (x, z, yaw, d, w) => {
+      const r = Math.hypot(d, w) / 2;
+      for (const [ox, oz, or] of occ.near(x, z)) if (Math.hypot(ox - x, oz - z) < (r + or) * 0.8) return false;
+      const ax = Math.cos(yaw), az = -Math.sin(yaw), bx = Math.sin(yaw), bz = Math.cos(yaw); // across, along
+      for (const [u, v] of [[0, 0], [-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]) {
+        const px = x + (ax * u * d + bx * v * w) / 2, pz = z + (az * u * d + bz * v * w) / 2;
+        if (streetDist(px, pz) < 3 || path.distTo(px, pz) < WALK + 3) return false;
+      }
+      return true;
+    };
+    const add = (x, z, yaw, d, w, h, col) => {
+      if (!fits(x, z, yaw, d, w)) return false;
+      occ.add(x, z, Math.hypot(d, w) / 2);
+      list.push({ x, z, yaw, d, w, h, col });
+      return true;
+    };
+    // 1) the PCH frontage: downtown, resort hotels near Beach Blvd, homes elsewhere
     const mainS = sOf(mainIdx), beachS = sOf(beachIdx);
     for (let s = 40; s < path.length - 40;) {
-      const i = Math.round(s / ds);
+      const i = Math.round(s / ds), yaw = yawAt(i);
       const dMain = Math.abs(s - mainS), hotel = s > beachS - 900 && s < beachS + 250;
       let w, d, h, set;
       if (dMain < 650) { w = 14 + rnd() * 18; d = 18 + rnd() * 16; h = 3.4 * (2 + Math.floor(rnd() * 3)) + 1; set = 4 + rnd() * 4; }
       else if (hotel) { w = 50 + rnd() * 60; d = 35 + rnd() * 25; h = 3.4 * (5 + Math.floor(rnd() * 5)) + 1; set = 22 + rnd() * 14; }
       else { w = 12 + rnd() * 10; d = 14 + rnd() * 8; h = 3.4 * (1 + Math.floor(rnd() * 3)) + 0.6; set = 12 + rnd() * 18; }
-      if (rnd() < (dMain < 650 ? 0.92 : 0.7)) list.push({ i, lat: WALK + set + d / 2, w, d, h, col: pal[Math.floor(rnd() * pal.length)] });
-      // a second row behind, for a skyline
-      if (rnd() < 0.6) list.push({ i, lat: WALK + set + d + 30 + rnd() * 40, w: w * (0.7 + rnd() * 0.5), d: 16 + rnd() * 10, h: 3.4 * (1 + Math.floor(rnd() * 3)) + 0.6, col: pal[Math.floor(rnd() * pal.length)], back: true });
+      if (rnd() < (dMain < 650 ? 0.95 : 0.75)) { const p = at(i, WALK + set + d / 2); add(p.x, p.z, yaw, d, w, h, pal[Math.floor(rnd() * pal.length)]); }
+      if (rnd() < 0.6) { const dd = 16 + rnd() * 10, p = at(i, WALK + set + d + 30 + rnd() * 40); add(p.x, p.z, yaw, dd, w * (0.7 + rnd() * 0.5), 3.4 * (1 + Math.floor(rnd() * 3)) + 0.6, pal[Math.floor(rnd() * pal.length)]); }
       s += w + 4 + rnd() * 10;
+    }
+    // 2) both sides of every city street: shops downtown, houses elsewhere
+    for (const s of streets) {
+      for (let k = 0; k < s.P.length - 1; k++) {
+        const a = s.P[k], b = s.P[k + 1], len = a.distanceTo(b);
+        if (len < 10) continue;
+        const tx = (b.x - a.x) / len, tz = (b.y - a.y) / len, yaw = Math.atan2(tx, tz), lx = tz, lz = -tx;
+        for (let u = 6; u < len - 6;) {
+          const px = a.x + tx * u, pz = a.y + tz * u, down = downtownAt(px, pz);
+          const w = down ? 10 + rnd() * 14 : 9 + rnd() * 5;
+          const d = down ? 14 + rnd() * 10 : 11 + rnd() * 5;
+          const h = down ? 3.4 * (2 + Math.floor(rnd() * 3)) + 1 : 3.2 * (rnd() < 0.35 ? 2 : 1) + 0.8;
+          const set = down ? 0.6 + rnd() * 1.2 : 4.5 + rnd() * 3;
+          for (const sd of [1, -1]) {
+            if (!down && rnd() < 0.12) continue; // the odd empty lot / yard
+            const off = s.hw + 2.6 + set + d / 2;
+            add(px + lx * sd * off, pz + lz * sd * off, yaw, d, w, h, down ? pal[Math.floor(rnd() * pal.length)] : homes[Math.floor(rnd() * homes.length)]);
+          }
+          u += w + (down ? 1 : 3 + rnd() * 3);
+        }
+      }
     }
     const inst = new THREE.InstancedMesh(geo, bMat, list.length);
     list.forEach((b, n) => {
-      const i = clamp(b.i, 0, N - 1), p = at(i, b.lat), yaw = yawAt(i);
-      // box: x across (depth), z along the road (frontage)
-      m4.compose(p, q4.setFromEuler(new THREE.Euler(0, yaw, 0)), s3.set(b.d, b.h, b.w));
+      // box: x across (depth), z along the frontage
+      m4.compose(v3.set(b.x, 0, b.z), q4.setFromEuler(new THREE.Euler(0, b.yaw, 0)), s3.set(b.d, b.h, b.w));
       inst.setMatrixAt(n, m4);
       inst.setColorAt(n, new THREE.Color(b.col));
-      if (!b.back) boxes.push(obb(p.x, p.z, b.d / 2, b.w / 2, yaw));
+      boxes.push(obb(b.x, b.z, b.d / 2, b.w / 2, b.yaw));
     });
     inst.castShadow = true;
     inst.receiveShadow = true;
     scene.add(inst);
+  }
+
+  /* ---------- city: street trees and lamps ---------- */
+  {
+    const tparts = [
+      colored(new THREE.CylinderGeometry(0.16, 0.22, 3.2, 6).translate(0, 1.6, 0), 0x5b4a3a),
+      colored(new THREE.IcosahedronGeometry(2.0, 1).scale(1, 0.8, 1).translate(0, 4.2, 0), 0x3f5a34),
+      colored(new THREE.IcosahedronGeometry(1.4, 1).translate(0.9, 5.2, 0.4), 0x4a6a3c),
+    ];
+    const trees = [], lamps = [];
+    for (const s of streets) {
+      for (let k = 0; k < s.P.length - 1; k++) {
+        const a = s.P[k], b = s.P[k + 1], len = a.distanceTo(b);
+        if (len < 8) continue;
+        const tx = (b.x - a.x) / len, tz = (b.y - a.y) / len, lx = tz, lz = -tx;
+        for (let u = 6; u < len - 4; u += 14 + rnd() * 6) for (const sd of [1, -1]) {
+          if (s.name === 'Main Street' || rnd() < 0.35) continue;
+          const x = a.x + tx * u + lx * sd * (s.hw + 1.4), z = a.y + tz * u + lz * sd * (s.hw + 1.4);
+          if (streetDist(x, z) > 0.9 && path.distTo(x, z) > WALK + 2) trees.push([x, z]);
+        }
+        for (let u = 20; u < len - 5; u += 48) {
+          const sd = (k + Math.round(u / 48)) % 2 ? 1 : -1;
+          const x = a.x + tx * u + lx * sd * (s.hw + 0.8), z = a.y + tz * u + lz * sd * (s.hw + 0.8);
+          if (streetDist(x, z) > 0.5 && path.distTo(x, z) > WALK + 2) lamps.push([x, z, Math.atan2(-lx * sd, -lz * sd)]);
+        }
+      }
+    }
+    const ti = new THREE.InstancedMesh(mergeGeometries(tparts), new THREE.MeshLambertMaterial({ vertexColors: true }), trees.length);
+    trees.forEach(([x, z], n) => { const k = 0.75 + rnd() * 0.5; place(ti, n, v3.set(x, 0, z), rnd() * 6.28, k); grid.add(x, z, 0.35); });
+    ti.castShadow = true;
+    const pole = mergeGeometries([
+      colored(new THREE.CylinderGeometry(0.09, 0.12, 7, 6).translate(0, 3.5, 0), 0x7d8086),
+      colored(new THREE.BoxGeometry(0.1, 0.1, 1.8).translate(0, 6.9, 0.9), 0x7d8086),
+    ]);
+    const li = new THREE.InstancedMesh(pole, new THREE.MeshLambertMaterial({ vertexColors: true }), lamps.length);
+    const lh = new THREE.InstancedMesh(new THREE.BoxGeometry(0.32, 0.12, 0.6).translate(0, 6.8, 1.75), new THREE.MeshBasicMaterial({ color: new THREE.Color(2.4, 1.9, 1.2), toneMapped: false }), lamps.length);
+    lamps.forEach(([x, z, yaw], n) => { place(li, n, v3.set(x, 0, z), yaw, 1); place(lh, n, v3.set(x, 0, z), yaw, 1); grid.add(x, z, 0.25); });
+    scene.add(ti, li, lh);
   }
 
   /* ---------- parked cars in the beach lots ---------- */
@@ -512,6 +680,10 @@ export function buildPCH(renderer, { isTouch }) {
 
   scene.environment = envFromSky(renderer, sky, 0x9a8a72);
 
+  // all solid boxes (hundreds of buildings) go in a spatial index for fast collisions
+  const boxGrid = makeBoxGrid(30);
+  boxes.forEach((b) => boxGrid.add(b));
+
   const startI = Math.max(tA - Math.round(60 / ds), 2);
   const dirAll = C[N - 1].clone().sub(C[0]);
   return {
@@ -520,18 +692,34 @@ export function buildPCH(renderer, { isTouch }) {
     bestKey: (car) => `garage-best-pch-${car}`,
     dust: new THREE.Color(0.66, 0.58, 0.46),
     farLimit: 420,
-    intro: 'south on PCH, past the pier',
+    intro: 'south on PCH, or turn off and explore downtown',
     mapRotate: -Math.atan2(dirAll.z, dirAll.x),
     mapMarks: [{ x: pierP1.x, z: pierP1.z, color: '#7fb7d9' }],
+    mapLines: streets.map((s) => s.P.map((p) => ({ x: p.x, z: p.y }))),
+    boxesNear: (x, z) => boxGrid.near(x, z),
+    // only nag about being lost when you're far from PCH *and* from the city streets
+    isFar: (st, n) => n.d > 420 && streetDist(st.x, st.z) > 120,
     startPose() { const p = at(startI, -7.8); return { x: p.x, z: p.z, yaw: yawAt(startI) }; },
     // keep to the right: south-bound on the ocean side, north-bound inland
     resetPose(i, s) { const p = at(i, s > 0 ? -7.8 : 7.8); return { x: p.x, z: p.z, yaw: yawAt(i) + (s > 0 ? 0 : Math.PI) }; },
+    // in the city, R puts you back on the nearest street (right-hand lane, facing the way you were going)
+    resetNear(st) {
+      const r = streetAt(st.x, st.z);
+      if (!r.seg || r.d + r.seg.hw > path.nearest(st.x, st.z).d - 13) return null;
+      const { a, b, hw } = r.seg;
+      let dx = b.x - a.x, dz = b.y - a.y; const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+      if (dx * Math.sin(st.yaw) + dz * Math.cos(st.yaw) < 0) { dx = -dx; dz = -dz; }
+      const fx = a.x + (b.x - a.x) * r.u, fz = a.y + (b.y - a.y) * r.u;
+      const off = hw > 5 ? hw * 0.45 : 0; // narrow streets: drive down the middle
+      return { x: fx - dz * off, z: fz + dx * off, yaw: Math.atan2(dx, dz) };
+    },
     surface(st, n) {
       const lat = n.lat;
+      const city = streetDist(st.x, st.z) < 2.6; // street or sidewalk
       const beyondEnd = n.d > Math.abs(lat) + 4;
       const plaza = Math.abs(sOf(n.i) - sOf(mainIdx)) < 120 && lat < 0 && lat > -80;
       const paved = (lat < WALK + 0.5 && lat > -WALK - 0.5) || (lat <= LOT0 && lat >= LOT1) || (lat <= BIKE0 && lat >= BIKE1) || plaza;
-      return { off: !paved || beyondEnd, kerb: Math.abs(lat) < MED };
+      return { off: !city && (!paved || beyondEnd), kerb: !city && Math.abs(lat) < MED };
     },
     update(dt) { oceanU.uTime.value += dt; },
     // surf gets louder the closer you are to the water

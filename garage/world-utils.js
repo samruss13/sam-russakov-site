@@ -151,6 +151,23 @@ export function makeGrid(cellSize = 8) {
   };
 }
 
+/* Spatial hash for solid boxes: each box is filed under every cell it overlaps,
+   so a lookup only needs the one cell the car is in. */
+export function makeBoxGrid(cellSize = 30) {
+  const map = new Map();
+  const k = (gx, gz) => `${gx},${gz}`;
+  return {
+    add(b) {
+      const r = Math.hypot(b.hx, b.hz) + 3;
+      for (let gx = Math.floor((b.cx - r) / cellSize); gx <= Math.floor((b.cx + r) / cellSize); gx++)
+        for (let gz = Math.floor((b.cz - r) / cellSize); gz <= Math.floor((b.cz + r) / cellSize); gz++) {
+          const key = k(gx, gz); if (!map.has(key)) map.set(key, []); map.get(key).push(b);
+        }
+    },
+    near(x, z) { return map.get(k(Math.floor(x / cellSize), Math.floor(z / cellSize))) || []; },
+  };
+}
+
 /* Solid oriented box for collisions, from a local box inside a rotated group. */
 export function obb(x, z, hx, hz, rotY = 0, origin = null) {
   const c = Math.cos(rotY), s = Math.sin(rotY);

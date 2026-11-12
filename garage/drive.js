@@ -26,7 +26,7 @@ export const LOCATIONS = {
     key: 'pch', build: buildPCH,
     name: 'PCH · Huntington Beach', short: 'PCH · HB', tag: 'Coast road',
     title: 'Pacific Coast Highway, <em>sunset.</em>',
-    blurb: 'Five and a half miles of PCH through Huntington Beach, from Seapoint St past the pier to the Santa Ana River. Time a run, or just cruise.',
+    blurb: 'Five and a half miles of PCH through Huntington Beach, from Seapoint St past the pier to the Santa Ana River, with the downtown streets open to explore. Time a run, or just cruise.',
   },
 };
 
@@ -83,7 +83,9 @@ export function createDrive(renderer) {
     mmRot = W.mapRotate || 0;
     const rp = (p) => [p.x * Math.cos(mmRot) - p.z * Math.sin(mmRot), p.x * Math.sin(mmRot) + p.z * Math.cos(mmRot)];
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    C.forEach((p) => { const [x, z] = rp(p); minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); });
+    const grow = (p) => { const [x, z] = rp(p); minX = Math.min(minX, x); maxX = Math.max(maxX, x); minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z); };
+    C.forEach(grow);
+    for (const line of W.mapLines || []) line.forEach(grow);
     mmScale = Math.min((mm.width - 16 * dpr) / (maxX - minX || 1), (mm.height - 16 * dpr) / (maxZ - minZ || 1));
     mmOx = (mm.width - (maxX - minX) * mmScale) / 2 - minX * mmScale;
     mmOz = (mm.height - (maxZ - minZ) * mmScale) / 2 - minZ * mmScale;
@@ -97,6 +99,11 @@ export function createDrive(renderer) {
     C.forEach((p, i) => { const [x, z] = mmPt(p.x, p.z); if (i) c.lineTo(x, z); else c.moveTo(x, z); });
     if (closed) c.closePath();
     c.stroke();
+    // city streets, thinner
+    if (W.mapLines) {
+      c.lineWidth = 1.2 * dpr; c.strokeStyle = 'rgba(244,239,230,.22)';
+      for (const line of W.mapLines) { c.beginPath(); line.forEach((p, i) => { const [x, z] = mmPt(p.x, p.z); if (i) c.lineTo(x, z); else c.moveTo(x, z); }); c.stroke(); }
+    }
     c.fillStyle = '#f4efe6';
     const marks = W.timing.type === 'circuit' ? [W.timing.lineIdx] : [W.timing.a, W.timing.b];
     for (const i of marks) { const [x, z] = mmPt(C[i].x, C[i].z); c.fillRect(x - 2 * dpr, z - 2 * dpr, 4 * dpr, 4 * dpr); }
@@ -145,6 +152,8 @@ export function createDrive(renderer) {
   const bestKey = () => W.bestKey(car.key);
 
   function resetToRoad() {
+    const near = W.resetNear && W.resetNear(st);
+    if (near) { Object.assign(st, near, { vx: 0, vz: 0, yawRate: 0, steer: 0 }); lap.start = null; lap.dir = 0; lap.prevIdx = -1; return; }
     const { C, T, nearest } = W.path;
     const n = nearest(st.x, st.z);
     const p = C[n.i], t = T[n.i];
@@ -163,7 +172,7 @@ export function createDrive(renderer) {
     let hit = 0;
     for (const o of offs) {
       let cx = st.x + fx * o, cz = st.z + fz * o;
-      for (const b of W.boxes) {
+      for (const b of (W.boxesNear ? W.boxesNear(cx, cz) : W.boxes)) {
         const dx = cx - b.cx, dz = cz - b.cz;
         if (Math.abs(dx) > b.hx + b.hz + 2 || Math.abs(dz) > b.hx + b.hz + 2) continue; // too far to touch
         const lx = dx * b.c - dz * b.s, lz = dx * b.s + dz * b.c;
@@ -227,7 +236,7 @@ export function createDrive(renderer) {
     } else {
       // point-to-point run, either direction
       const a = tm.a, b = tm.b, p = lap.prevIdx, i = n.i;
-      if (p >= 0 && n.d < 40) {
+      if (p >= 0 && n.d < 40 && Math.abs(i - p) < 40) { // ignore jumps (rejoining from a side street)
         const crossed = (k) => (p < k && i >= k) ? 1 : (p > k && i <= k) ? -1 : 0;
         const ca = crossed(a), cb = crossed(b);
         if (lap.start != null) {
@@ -246,7 +255,9 @@ export function createDrive(renderer) {
     let vF = st.vx * fx + st.vz * fz;
     let vL = st.vx * lx + st.vz * lz;
 
-    const n = W.path.nearest(st.x, st.z, st.idx);
+    let n = W.path.nearest(st.x, st.z, st.idx);
+    // wandered off (into the city)? search the whole road so we find it again where you rejoin
+    if (n.d > 25) { const f = W.path.nearest(st.x, st.z); if (f.d < n.d - 1) n = f; }
     st.idx = n.i;
     const { off, kerb } = W.surface(st, n);
 
@@ -297,7 +308,7 @@ export function createDrive(renderer) {
     }
 
     timing(n);
-    if (n.d > W.farLimit) flash(`Head back to the ${W.timing.type === 'circuit' ? 'track' : 'road'}  ·  R to reset`, 0.2);
+    if (W.isFar ? W.isFar(st, n) : n.d > W.farLimit) flash(`Head back to the ${W.timing.type === 'circuit' ? 'track' : 'road'}  ·  R to reset`, 0.2);
 
     car.root.position.set(st.x, 0, st.z);
     car.root.rotation.y = st.yaw;

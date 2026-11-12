@@ -8,7 +8,7 @@ import { makeRnd, canvasTex, noiseFill, layer, makePath, strip, makeSky, envFrom
    (Rosamond, CA) at golden hour.
    ========================================================= */
 
-const HALF_W = 6.2;   // half the track width (m)
+const HALF_W = 9.5;   // half the track width (m) — wider than the real ~12 m, so it's easier to stay on
 const PIT_DIST = 34;  // pit garage centre, distance from the track centreline (m)
 
 export function buildWillow(renderer, { isTouch }) {
