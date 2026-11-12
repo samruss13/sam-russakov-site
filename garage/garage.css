@@ -303,6 +303,17 @@ body.driving .hud button { pointer-events: auto; }
 .hud-msg.on { opacity: 1; transform: translate(-50%, 0); }
 .hud-keys { position: absolute; left: var(--edge); bottom: 26px; color: rgba(242, 237, 228, 0.75); }
 
+/* mouse-steering indicator */
+.steer-ind {
+  position: absolute; left: 50%; bottom: 34px; width: 260px; height: 2px; margin-left: -130px;
+  background: linear-gradient(90deg, transparent, rgba(242, 237, 228, 0.35) 15%, rgba(242, 237, 228, 0.35) 85%, transparent);
+  opacity: 0; transition: opacity 0.25s;
+}
+.steer-ind::after { content: ''; position: absolute; left: 50%; top: -5px; width: 1px; height: 12px; background: rgba(242, 237, 228, 0.5); }
+.steer-ind i { position: absolute; left: 50%; top: -5px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--gold-grad); }
+.steer-ind.on { opacity: 1; }
+body.driving #gl { cursor: crosshair; }
+
 .touch { display: none; }
 body.is-touch .hud-keys, body.is-touch .controls-note, body.is-touch .kbd { display: none; }
 body.is-touch .touch {

@@ -42,7 +42,7 @@ export function createSound() {
     master.gain.value = 0;
     // gentle limiter so nothing clips on phone speakers
     const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -14; comp.ratio.value = 6; comp.attack.value = 0.003; comp.release.value = 0.2;
+    comp.threshold.value = -8; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.2;
     master.connect(comp).connect(ctx.destination);
     const noise = noiseBuffer(3);
 
@@ -109,7 +109,7 @@ export function createSound() {
     nodes.popBP.frequency.setValueAtTime(500 + Math.random() * 700, t);
     g.cancelScheduledValues(t);
     g.setValueAtTime(0.0001, t);
-    g.exponentialRampToValueAtTime(0.5 * strength, t + 0.004);
+    g.exponentialRampToValueAtTime(0.9 * strength, t + 0.004);
     g.exponentialRampToValueAtTime(0.0001, t + 0.06 + Math.random() * 0.05);
   }
 
@@ -157,7 +157,9 @@ export function createSound() {
     update(s) {
       if (!ctx || !nodes || !running) return;
       const v = voice;
-      const rpmTarget = s.gear <= 0 ? v.idle + s.throttle * 2200 : v.idle + 600 + s.rpm01 * (v.redline - v.idle - 600);
+      // after an upshift the revs only fall part-way (closer ratios in the higher gears)
+      const floor = s.gear <= 1 ? v.idle + 500 : v.redline * [0, 0, 0.56, 0.62, 0.66, 0.69, 0.71][Math.min(s.gear, 6)];
+      const rpmTarget = s.gear <= 0 ? v.idle + s.throttle * 2200 : floor + s.rpm01 * (v.redline - floor);
       // shifts: rpm drops fast on upshift, rises a little slower
       rpmSm += (rpmTarget - rpmSm) * clamp(s.dt * (rpmTarget < rpmSm ? 14 : 7), 0, 1);
       const rpm = rpmSm, r01 = clamp((rpm - v.idle) / (v.redline - v.idle), 0, 1);
@@ -175,7 +177,7 @@ export function createSound() {
       lastGear = s.gear;
       shiftT = Math.max(0, shiftT - s.dt);
       const dip = shiftT > 0 ? 0.15 : 1;
-      set(nodes.engG.gain, v.vol * (0.16 + thr * 0.24 + r01 * 0.14) * dip, shiftT > 0 ? 0.01 : 0.05);
+      set(nodes.engG.gain, v.vol * 0.78 * (0.16 + thr * 0.24 + r01 * 0.14) * dip, shiftT > 0 ? 0.01 : 0.05);
 
       // lift off at high revs -> a few pops and crackles over the next ~0.7 s
       if (lastThrottle > 0.5 && thr < 0.1 && r01 > 0.45) popWindow = 0.7;
@@ -187,10 +189,10 @@ export function createSound() {
 
       // tyres, dirt, wind
       const squeal = s.off ? 0 : clamp((s.slide - 2.5) / 8, 0, 1) * clamp(s.speed / 8, 0, 1);
-      set(nodes.sqG.gain, squeal * 0.22, 0.06);
+      set(nodes.sqG.gain, squeal * 0.75, 0.06);
       set(nodes.sqA.frequency, 1650 + squeal * 300, 0.1);
-      set(nodes.grG.gain, s.off ? clamp(s.speed / 25, 0, 1) * 0.28 : 0, 0.08);
-      set(nodes.wnG.gain, clamp(s.speed / 75, 0, 1) ** 2 * 0.22, 0.2);
+      set(nodes.grG.gain, s.off ? clamp(s.speed / 20, 0.15, 1) * 0.65 : 0, 0.08);
+      set(nodes.wnG.gain, clamp(s.speed / 65, 0, 1) ** 1.5 * 0.55, 0.2);
       set(nodes.wnBP.frequency, 300 + s.speed * 9, 0.2);
 
       // ambience swells
@@ -198,10 +200,10 @@ export function createSound() {
       const swell = this.ambience === 'surf'
         ? 0.55 + 0.45 * Math.sin(t * 0.55) * Math.sin(t * 0.21 + 1)
         : 0.6 + 0.4 * Math.sin(t * 0.3) * Math.sin(t * 0.13 + 2);
-      set(nodes.amG.gain, s.amb * swell * (this.ambience === 'surf' ? 0.32 : 0.12), 0.3);
+      set(nodes.amG.gain, s.amb * swell * (this.ambience === 'surf' ? 0.8 : 0.35), 0.3);
       set(nodes.amLP.frequency, this.ambience === 'surf' ? 500 + swell * 900 : 380 + swell * 300, 0.3);
 
-      if (s.hit > 3) { const g = nodes.thG.gain; g.cancelScheduledValues(t); g.setValueAtTime(clamp(s.hit / 12, 0.2, 1), t); g.exponentialRampToValueAtTime(0.0001, t + 0.35); }
+      if (s.hit > 3) { const g = nodes.thG.gain; g.cancelScheduledValues(t); g.setValueAtTime(clamp(s.hit / 8, 0.4, 1.4), t); g.exponentialRampToValueAtTime(0.0001, t + 0.35); }
     },
   };
 }

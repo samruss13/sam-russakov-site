@@ -121,7 +121,21 @@ export function createDrive(renderer) {
   };
   addEventListener('keydown', (e) => onKey(e, 1));
   addEventListener('keyup', (e) => onKey(e, 0));
-  addEventListener('blur', () => { for (const k in input) input[k] = 0; });
+  addEventListener('blur', () => { for (const k in input) input[k] = 0; mouse.on = false; });
+
+  // hold the left mouse button and steer with the mouse (centre of the screen = straight ahead)
+  const mouse = { on: false, axis: 0 };
+  const glc = $('#gl'), ind = $('#steer-ind'), indDot = ind && ind.querySelector('i');
+  const mouseAxis = (e) => clamp((e.clientX - innerWidth / 2) / (innerWidth * 0.28), -1, 1);
+  glc.addEventListener('pointerdown', (e) => {
+    if (!active || e.pointerType !== 'mouse' || e.button !== 0) return;
+    mouse.on = true; mouse.axis = mouseAxis(e);
+    try { glc.setPointerCapture(e.pointerId); } catch {}
+    e.preventDefault();
+  });
+  addEventListener('pointermove', (e) => { if (mouse.on) mouse.axis = mouseAxis(e); });
+  addEventListener('pointerup', (e) => { if (e.button === 0) mouse.on = false; });
+  glc.addEventListener('contextmenu', (e) => { if (active) e.preventDefault(); });
 
   /* ---------- car + state ---------- */
   let car = null, P = null;
@@ -236,7 +250,9 @@ export function createDrive(renderer) {
     st.idx = n.i;
     const { off, kerb } = W.surface(st, n);
 
-    const steerIn = input.left - input.right;
+    // keys win if pressed; otherwise the mouse (when held) steers proportionally
+    const keySteer = input.left - input.right;
+    const steerIn = keySteer !== 0 || !mouse.on ? keySteer : -mouse.axis;
     const speed = Math.abs(vF);
     const steerMax = P.steer / (1 + speed / 24);
     st.steer = damp(st.steer, steerIn * steerMax, 10, dt);
@@ -358,7 +374,7 @@ export function createDrive(renderer) {
       sound.start(carKey, W.ambience || 'wind');
       flash(`${CAR_SPECS[carKey].name}  ·  ${W.intro}`, 4);
     },
-    exit() { active = false; for (const k in input) input[k] = 0; sound.stop(); },
+    exit() { active = false; for (const k in input) input[k] = 0; mouse.on = false; sound.stop(); },
     sound,
     toggleSound() { sound.toggle(); showSound(); return sound.enabled; },
     reset: resetToRoad,
@@ -375,6 +391,10 @@ export function createDrive(renderer) {
       if (W.update) W.update(h, camera);
       updateCamera(h, vF);
       drawMinimap();
+      if (ind) {
+        ind.classList.toggle('on', mouse.on);
+        if (mouse.on) indDot.style.transform = `translateX(${mouse.axis * 120}px)`;
+      }
     },
     resize() { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); if (active) sizeMinimap(); },
     get info() { return W ? W.info : null; },
