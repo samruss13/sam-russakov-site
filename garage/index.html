@@ -129,9 +129,10 @@
   <div class="picker" id="picker" aria-hidden="true">
     <div class="picker-inner">
       <button class="panel-close label" data-close-picker>Close <i>×</i></button>
-      <p class="label kicker">Pick your car</p>
-      <h2>Willow Springs, <em>golden hour.</em></h2>
-      <p class="sub">A 2.5-mile desert circuit modelled on Big Willow. Pull out of the pit garage, cross the line and set a lap.</p>
+      <p class="label kicker">Pick a place, then a car</p>
+      <div class="locs" id="locs" role="tablist" aria-label="Location"></div>
+      <h2 id="pick-title">Willow Springs, <em>golden hour.</em></h2>
+      <p class="sub" id="pick-blurb">A 2.5-mile desert circuit modelled on Big Willow. Pull out of the pit garage, cross the line and set a lap.</p>
       <div class="cars" id="cars"></div>
       <p class="label controls-note" id="controls-note">W A S D / arrows drive · Space handbrake · C camera · R reset · Esc park</p>
     </div>
@@ -145,7 +146,7 @@
       <button class="label hud-btn" id="hud-reset">Reset <span class="kbd">R</span></button>
     </div>
     <div class="hud-laps">
-      <div><span class="label">Lap</span><b id="hud-cur">Cross the line</b></div>
+      <div><span class="label" id="hud-cur-label">Lap</span><b id="hud-cur">Cross the line</b></div>
       <div><span class="label">Last</span><b id="hud-last">–:––.–</b></div>
       <div><span class="label">Best</span><b id="hud-best">–:––.–</b></div>
     </div>

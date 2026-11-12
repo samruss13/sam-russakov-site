@@ -232,6 +232,23 @@ body.driving .bottom, body.picking .bottom { transform: translateY(110%); }
 .picker-inner { width: 100%; max-width: 1180px; margin: 0 auto; padding: 120px var(--pad) 40px; transform: translateY(30px); transition: transform 0.9s var(--ease-out); }
 .picker.open .picker-inner { transform: none; }
 .picker .sub { margin-bottom: 26px; }
+.locs { display: inline-flex; gap: 4px; padding: 4px; margin-top: 14px; border: 1px solid var(--line); border-radius: 999px; background: rgba(20, 19, 17, 0.7); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.locs button {
+  display: inline-flex; align-items: baseline; gap: 8px; padding: 9px 16px; border-radius: 999px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted);
+  transition: color 0.3s, background 0.3s;
+}
+.locs button small { font-size: 9px; letter-spacing: 0.12em; opacity: 0.7; }
+.locs button:hover { color: var(--fg); }
+.locs button[aria-selected="true"] { background: var(--gold-grad); color: #120d02; }
+.locs button[aria-selected="true"] small { opacity: 0.8; }
+.locs .short { display: none; }
+@media (max-width: 860px) {
+  .locs { display: flex; }
+  .locs button { flex: 1; justify-content: center; padding: 9px 10px; white-space: nowrap; }
+  .locs .full, .locs small { display: none; }
+  .locs .short { display: inline; }
+}
 .cars { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .car-card {
   text-align: left; padding: 22px 22px 18px; border: 1px solid var(--line); border-radius: 4px;

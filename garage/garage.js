@@ -7,7 +7,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { PROJECTS } from '../js/content.js';
 import { buildCar, CAR_SPECS } from './cars.js';
-import { createDrive } from './drive.js';
+import { createDrive, LOCATIONS } from './drive.js';
 
 /* =========================================================
    Helpers
@@ -85,7 +85,7 @@ function speckle(ctx, w, h, n, a) {
 /* =========================================================
    The garage
    ========================================================= */
-const G = { frames: [], cars: {}, neon: [], hits: [] };
+const G = { frames: [], cars: {}, neon: [], hits: [], certs: [] };
 const W = 7, D = 11, H = 4.2; // half-width, depth, height (m)
 
 function std(color, rough = 0.8, metal = 0, extra = {}) {
@@ -320,7 +320,8 @@ function buildGarage() {
   scene.add(neonLight);
 
   // ---- the strengths gallery on the back wall ----
-  const wallSpot = new THREE.SpotLight(0xffe6c4, 55, 14, 0.75, 0.6, 1.3);
+  // wide, soft wash so all four posters get the same light (no hot spot in the middle)
+  const wallSpot = new THREE.SpotLight(0xffe6c4, 24, 16, 1.05, 1, 1.3);
   wallSpot.position.set(0, H - 0.2, -6.5);
   wallSpot.target.position.set(0, 2.2, -D);
   scene.add(wallSpot, wallSpot.target);
@@ -328,32 +329,25 @@ function buildGarage() {
 
   // ---- About wall (right): portrait, certificates, medals ----
   const aboutSpot = new THREE.SpotLight(0xffe6c4, 26, 12, 0.8, 0.6, 1.3);
-  aboutSpot.position.set(3.2, H - 0.2, -6.3);
-  aboutSpot.target.position.set(W, 2, -6.3);
+  aboutSpot.position.set(3.0, H - 0.2, -8.2);
+  aboutSpot.target.position.set(W, 2, -8.2);
   scene.add(aboutSpot, aboutSpot.target);
   const portrait = framed(asset('assets/img/portrait.jpg'), 1.3, 1.65, null);
-  portrait.position.set(W - 0.05, 2.15, -7.7);
+  portrait.position.set(W - 0.05, 2.15, -7.45);
   portrait.rotation.y = -Math.PI / 2;
   scene.add(portrait);
-  const certs = [['Product Management', 'Aha!'], ['Social Media Marketing', 'Hootsuite']];
-  certs.forEach(([name, org], i) => {
-    const tex = canvasTex(800, 600, (c, w, h) => {
-      c.fillStyle = '#f4efe4'; c.fillRect(0, 0, w, h);
-      c.strokeStyle = '#c99a2e'; c.lineWidth = 6; c.strokeRect(26, 26, w - 52, h - 52);
-      c.lineWidth = 1.5; c.strokeRect(40, 40, w - 80, h - 80);
-      c.textAlign = 'center'; c.fillStyle = '#6f5a2a';
-      c.font = '500 26px "JetBrains Mono", monospace'; c.fillText('CERTIFICATE OF COMPLETION', w / 2, 150);
-      c.fillStyle = '#1b1712'; c.font = '500 64px "Cormorant Garamond", serif';
-      c.fillText(name, w / 2, 290);
-      c.font = 'italic 400 40px "Cormorant Garamond", serif'; c.fillStyle = '#3a3226';
-      c.fillText(`${org} · LinkedIn Learning`, w / 2, 365);
-      c.beginPath(); c.arc(w / 2, 470, 38, 0, 7); c.fillStyle = '#c99a2e'; c.fill();
-      c.fillStyle = '#f4efe4'; c.font = '600 30px Inter, sans-serif'; c.fillText('SR', w / 2, 481);
-    });
-    const f = framed(tex, 1.0, 0.75, null, 0x8a8680);
-    f.position.set(W - 0.05, 2.55 - i * 0.95, -5.6);
+  // the real certificates, framed to the left of the portrait (click to verify on LinkedIn)
+  const certs = [
+    ['assets/img/cert-product-management.jpg', 'https://www.linkedin.com/learning/certificates/d1bb8b26d3bbbaf8ffa8849ee7f29a3e8a19ffec2b53fb60dcf9f356c03ea391'],
+    ['assets/img/cert-social-media.jpg', 'https://www.linkedin.com/learning/certificates/d8084809ab130d89e7f933f4f98891119a3c083d29c7c1cb6ad30b9ecca6cd2a'],
+  ];
+  certs.forEach(([img, url], i) => {
+    const f = framed(asset(img), 1.16, 0.896, null, 0xb4b4b4);
+    f.position.set(W - 0.05, 2.62 - i * 1.06, -9.15);
     f.rotation.y = -Math.PI / 2;
+    f.traverse((m) => { if (m.isMesh) m.userData.url = url; });
     scene.add(f);
+    G.certs.push(f);
   });
   // shelf with race medals
   mesh(boxG(0.3, 0.04, 1.9), std(0x5a4632, 0.6), W - 0.15, 1.12, -4.3);
@@ -416,7 +410,8 @@ function makeFrame(p, i) {
   const trimMat = std(GOLD, 0.35, 0.9, { emissive: GOLD, emissiveIntensity: 0 });
   const trim = mesh(boxG(pw + 0.04, ph + 0.04, 0.01), trimMat, 0, (h - ph) / 2 - 0.1, 0.031, g);
   const tex = loadTex(asset(p.img), (t) => coverCrop(t, pw / ph, p.focus));
-  const photo = mesh(new THREE.PlaneGeometry(pw, ph), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 }), 0, (h - ph) / 2 - 0.1, 0.037, g);
+  // matte print, slightly dimmed so bright photos don't blow out under the lights
+  const photo = mesh(new THREE.PlaneGeometry(pw, ph), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, color: 0xc8c8c8 }), 0, (h - ph) / 2 - 0.1, 0.037, g);
   const cap = canvasTex(1024, 128, (c, cw, chh) => {
     c.fillStyle = '#0d0d0e'; c.fillRect(0, 0, cw, chh);
     c.textBaseline = 'middle';
@@ -460,14 +455,14 @@ function stops() {
     return [
       { pos: V(0, 1.75, 17), look: V(0, 1.2, -4), fov: 62 },
       { pos: V(0, 2.3, -3.4), look: V(0, 1.15, -11), fov: 66 },
-      { pos: V(1.6, 2.0, -6.3), look: V(7, 1.55, -6.6), fov: 66 },
+      { pos: V(1.2, 2.1, -8.3), look: V(7, 1.25, -8.3), fov: 66 },
       { pos: V(0, 2.4, 4.6), look: V(0, -0.6, -4.8), fov: 62 },
     ];
   }
   return [
     { pos: V(0, 1.6, 15.5), look: V(-2.4, 1.55, -5), fov: 50 },
     { pos: V(0, 2.05, -2.5), look: V(0, 1.12, -11), fov: 52 },
-    { pos: V(3.6, 1.95, -7.6), look: V(7, 1.75, -9.3), fov: 52 },
+    { pos: V(2.4, 1.95, -8.6), look: V(7, 1.8, -9.9), fov: 52 },
     { pos: V(0.4, 1.15, 2.6), look: V(-1.6, 0.65, -4.8), fov: 50 },
   ];
 }
@@ -607,6 +602,20 @@ cards.forEach((c) => {
   c.addEventListener('focus', () => hotCar(c.dataset.car));
   c.addEventListener('click', () => startDrive(c.dataset.car));
 });
+
+// location switch (remembered in this browser)
+try { ui.loc = localStorage.getItem('garage-loc') || 'willow'; } catch { ui.loc = 'willow'; }
+if (!LOCATIONS[ui.loc]) ui.loc = 'willow';
+$('#locs').innerHTML = Object.values(LOCATIONS).map((l) => `<button role="tab" data-loc="${l.key}"><span class="full">${l.name}</span><span class="short">${l.short}</span><small>${l.tag}</small></button>`).join('');
+function setLoc(key) {
+  ui.loc = key;
+  try { localStorage.setItem('garage-loc', key); } catch {}
+  $$('#locs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.loc === key)));
+  $('#pick-title').innerHTML = LOCATIONS[key].title;
+  $('#pick-blurb').textContent = LOCATIONS[key].blurb;
+}
+$$('#locs button').forEach((b) => b.addEventListener('click', () => setLoc(b.dataset.loc)));
+setLoc(ui.loc);
 function openPicker(key) {
   if (ui.mode !== 'garage') return;
   if (ui.panelOpen) closePanel();
@@ -639,7 +648,7 @@ function startDrive(key) {
   setTimeout(() => {
     closePicker();
     lockScroll(true);
-    drive.enter(key);
+    drive.enter(key, ui.loc);
     ui.mode = 'drive';
     document.body.classList.add('driving');
     $('#hud').setAttribute('aria-hidden', 'false');
@@ -715,6 +724,10 @@ function pick3D() {
     const hit = ray.intersectObjects(G.frames.flatMap((f) => [f.photo, f.back]), false)[0];
     return { frame: hit ? hit.object.userData.frame : -1, car: null };
   }
+  if (Math.abs(ui.progress - 2) < 0.25) {
+    const hit = ray.intersectObjects(G.certs, true)[0];
+    if (hit) return { frame: -1, car: null, url: hit.object.userData.url };
+  }
   if (Math.abs(ui.progress - 3) < 0.25) {
     for (const [k, c] of Object.entries(G.cars)) if (ray.intersectObject(c.root, true).length) return { frame: -1, car: k };
   }
@@ -725,6 +738,7 @@ canvas.addEventListener('click', (e) => {
   const h = pick3D();
   if (h.frame >= 0) openPanel(h.frame);
   else if (h.car) openPicker(h.car);
+  else if (h.url) window.open(h.url, '_blank', 'noopener');
 });
 
 /* =========================================================
@@ -815,7 +829,7 @@ function frame() {
   if (++hoverTick % 3 === 0 && !isTouch) {
     const h = pick3D();
     if (h.frame !== ui.hoverFrame && !listBtns.some((b) => b.matches(':hover'))) setHoverFrame(h.frame);
-    ui.hoverCar = h.car;
+    ui.hoverCar = h.car || h.url || null; // anything clickable gets the pointer cursor
     document.body.classList.toggle('hover-frame', ui.hoverFrame >= 0 || !!ui.hoverCar);
   }
   G.frames.forEach((f) => {
