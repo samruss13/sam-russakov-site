@@ -305,10 +305,18 @@ a.cert-name:hover .cert-arrow { transform: translate(3px, -3px); }
 }
 body.menu-open .menu-overlay { clip-path: circle(150% at calc(100% - 42px) 50px); pointer-events: auto; }
 .menu-overlay nav { display: grid; gap: 10px; }
-.menu-overlay button {
+.menu-overlay button, .menu-overlay a {
   display: flex; align-items: baseline; gap: 16px; text-align: left;
   font-family: var(--serif); font-size: 56px; line-height: 1.1;
 }
+.menu-overlay .menu-garage { color: var(--gold-hi); }
+/* link to the 3D garage version */
+.nav .nav-garage {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  padding: 10px 16px; margin-left: 6px; border: 1px solid rgba(227, 161, 10, 0.55); border-radius: 999px;
+  color: var(--gold-hi); transition: background 0.4s, color 0.4s;
+}
+.nav .nav-garage:hover { background: rgba(227, 161, 10, 0.12); color: var(--fg); }
 
 /* ---------- Cursor ---------- */
 .cursor { position: fixed; inset: 0; pointer-events: none; z-index: 200; }
