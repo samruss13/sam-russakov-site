@@ -291,7 +291,8 @@ export function createDrive(renderer) {
   {
     const p = C[pitIdx], l = L[pitIdx];
     const clear = (sd) => { const x = p.x + l.x * sd * 45, z = p.z + l.z * sd * 45; let m = Infinity; C.forEach((q, i) => { if (Math.abs(((i - pitIdx + N + N / 2) % N) - N / 2) > 60) m = Math.min(m, Math.hypot(q.x - x, q.z - z)); }); return m; };
-    pitSide = 1; // left of the front straight, as you drive down it    const dist = PIT_DIST;
+    pitSide = 1; // left of the front straight, as you drive down it
+    const dist = PIT_DIST;
     pit.position.set(p.x + l.x * pitSide * dist, 0, p.z + l.z * pitSide * dist);
     const face = new THREE.Vector3(-l.x * pitSide, 0, -l.z * pitSide); // building front faces the track
     pit.rotation.y = Math.atan2(face.x, face.z);
