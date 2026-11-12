@@ -600,7 +600,7 @@ function hotCar(key) {
 cards.forEach((c) => {
   c.addEventListener('pointerenter', () => hotCar(c.dataset.car));
   c.addEventListener('focus', () => hotCar(c.dataset.car));
-  c.addEventListener('click', () => startDrive(c.dataset.car));
+  c.addEventListener('click', () => { drive.sound.unlock(); startDrive(c.dataset.car); }); // audio must start inside the tap
 });
 
 // location switch (remembered in this browser)
@@ -672,6 +672,7 @@ function exitDrive() {
 $('#hud-park').addEventListener('click', exitDrive);
 $('#hud-cam').addEventListener('click', () => drive.cycleCamera());
 $('#hud-reset').addEventListener('click', () => drive.reset());
+$('#hud-sound').addEventListener('click', () => { drive.sound.unlock(); drive.toggleSound(); });
 
 // touch controls
 $$('#touch [data-in]').forEach((b) => {

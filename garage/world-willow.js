@@ -285,6 +285,7 @@ export function buildWillow(renderer, { isTouch }) {
     bestKey: (car) => `garage-best-${car}`,
     dust: new THREE.Color(0.5, 0.41, 0.32),
     farLimit: 350,
+    ambience: 'wind',
     intro: 'pull out and head for the line',
     startPose() {
       const p = new THREE.Vector3(0, 0, -0.5).applyMatrix4(new THREE.Matrix4().makeRotationY(th)).add(pit.position);

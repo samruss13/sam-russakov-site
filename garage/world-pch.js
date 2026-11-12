@@ -534,6 +534,13 @@ export function buildPCH(renderer, { isTouch }) {
       return { off: !paved || beyondEnd, kerb: Math.abs(lat) < MED };
     },
     update(dt) { oceanU.uTime.value += dt; },
+    // surf gets louder the closer you are to the water
+    ambience: 'surf',
+    ambLevel(st) {
+      const i = clamp(st.idx, 0, N - 1);
+      const lat = (st.x - C[i].x) * L[i].x + (st.z - C[i].z) * L[i].z;
+      return clamp(1 - (beachW[i] + lat - 20) / 380, 0.12, 1);
+    },
     info: { length: path.length, mainIdx, beachIdx },
   };
 }

@@ -3,6 +3,7 @@ import { buildCar, CAR_SPECS } from './cars.js';
 import { canvasTex, makeRnd, clamp } from './world-utils.js';
 import { buildWillow } from './world-willow.js';
 import { buildPCH } from './world-pch.js';
+import { createSound } from './audio.js';
 
 /* =========================================================
    Drive mode core: car physics, camera, HUD, laps / timed runs.
@@ -31,6 +32,10 @@ export const LOCATIONS = {
 
 export function createDrive(renderer) {
   const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.3, 7000);
+  const sound = createSound();
+  const soundBtn = $('#hud-sound');
+  const showSound = () => { if (soundBtn) soundBtn.firstChild.textContent = sound.enabled ? 'Sound on ' : 'Sound off '; };
+  showSound();
   const worlds = {};
   let W = null; // the active world
 
@@ -112,6 +117,7 @@ export function createDrive(renderer) {
     if (k) { input[k] = v; e.preventDefault(); }
     if (v && e.code === 'KeyR') resetToRoad();
     if (v && e.code === 'KeyC') camMode = (camMode + 1) % 3;
+    if (v && e.code === 'KeyM' && !e.repeat) { sound.toggle(); showSound(); }
   };
   addEventListener('keydown', (e) => onKey(e, 1));
   addEventListener('keyup', (e) => onKey(e, 0));
@@ -120,7 +126,7 @@ export function createDrive(renderer) {
   /* ---------- car + state ---------- */
   let car = null, P = null;
   const st = { x: 0, z: 0, yaw: 0, vx: 0, vz: 0, yawRate: 0, steer: 0, pitch: 0, roll: 0, idx: 0 };
-  let camMode = 0;
+  let camMode = 0, throttle = 0;
   const lap = { start: null, last: null, best: null, checkpoint: false, prevRel: 0, prevIdx: -1, dir: 0 };
   const bestKey = () => W.bestKey(car.key);
 
@@ -174,6 +180,7 @@ export function createDrive(renderer) {
       }
     }
     if (hit > 3) { st.vx *= 0.7; st.vz *= 0.7; }
+    st.hit = Math.max(st.hit || 0, hit);
   }
 
   const hud = { speed: $('#hud-speed'), gear: $('#hud-gear'), cur: $('#hud-cur'), last: $('#hud-last'), best: $('#hud-best'), msg: $('#hud-msg'), bar: $('#hud-rpm'), curLabel: $('#hud-cur-label') };
@@ -286,6 +293,9 @@ export function createDrive(renderer) {
     hud.speed.textContent = String(mph).padStart(3, '0');
     const band = P.maxSpeed * 2.237 / 6.2;
     const gear = vF < -0.5 ? 'R' : mph < 2 ? 'N' : String(Math.min(6, 1 + Math.floor(mph / band)));
+    // for the engine sound
+    const gN = gear === 'N' ? 0 : gear === 'R' ? 1 : +gear;
+    Object.assign(st, { gearN: gN, r01: gN ? clamp((Math.abs(vF) * 2.237 - (gN - 1) * band) / band, 0, 1) : 0, slide, off, speed });
     hud.gear.textContent = gear;
     hud.bar.style.transform = `scaleX(${gear === 'N' || gear === 'R' ? 0.08 : clamp(0.25 + ((mph % band) / band) * 0.75, 0, 1)})`;
     const idle = W.timing.type === 'circuit' ? 'Cross the line' : 'Cross a start line';
@@ -344,9 +354,13 @@ export function createDrive(renderer) {
       car.root.rotation.y = st.yaw;
       updateCamera(0.016, 0, true);
       active = true;
+      throttle = 0;
+      sound.start(carKey, W.ambience || 'wind');
       flash(`${CAR_SPECS[carKey].name}  ·  ${W.intro}`, 4);
     },
-    exit() { active = false; for (const k in input) input[k] = 0; },
+    exit() { active = false; for (const k in input) input[k] = 0; sound.stop(); },
+    sound,
+    toggleSound() { sound.toggle(); showSound(); return sound.enabled; },
     reset: resetToRoad,
     cycleCamera() { camMode = (camMode + 1) % 3; },
     update(dt) {
@@ -355,6 +369,9 @@ export function createDrive(renderer) {
       let vF = 0;
       for (let i = 0; i < 2; i++) vF = step(h / 2);
       updateParticles(h);
+      throttle = damp(throttle, input.gas ? 1 : 0, input.gas ? 10 : 6, h);
+      sound.update({ speed: st.speed, rpm01: st.r01, gear: st.gearN, throttle, slide: st.slide, off: st.off, hit: st.hit || 0, amb: W.ambLevel ? W.ambLevel(st) : 1, dt: h });
+      st.hit = 0;
       if (W.update) W.update(h, camera);
       updateCamera(h, vF);
       drawMinimap();
