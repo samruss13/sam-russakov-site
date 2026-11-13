@@ -13,6 +13,7 @@ import { createSound } from './audio.js';
 const $ = (s) => document.querySelector(s);
 const damp = (a, b, k, dt) => a + (b - a) * (1 - Math.exp(-k * dt));
 const isTouch = matchMedia('(hover: none), (pointer: coarse)').matches;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const rnd = makeRnd(4242);
 
 export const LOCATIONS = {
@@ -350,7 +351,8 @@ export function createDrive(renderer) {
     camera.position.copy(camPos);
     camera.lookAt(camLook);
     if (W.sky) W.sky.position.set(camPos.x, 0, camPos.z); // keep the sky dome centred on us (long roads)
-    const fov = 56 + clamp(Math.abs(vF) * 0.22, 0, 16) + (camera.aspect < 1 ? 14 : 0);
+    const zoom = reduceMotion.matches ? 0 : clamp(Math.abs(vF) * 0.22, 0, 16); // the camera widens with speed
+    const fov = 56 + zoom + (camera.aspect < 1 ? 14 : 0);
     camera.fov = snap ? fov : damp(camera.fov, fov, 4, dt);
     camera.updateProjectionMatrix();
     W.sun.position.set(st.x + W.sunDir.x * 120, W.sunDir.y * 120 + 30, st.z + W.sunDir.z * 120);

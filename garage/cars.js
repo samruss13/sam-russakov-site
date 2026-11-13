@@ -91,6 +91,76 @@ function loft(z0, z1, step, fn, round = 0.12) {
   return g;
 }
 
+/* Skin: a thin layer over chosen strips of a loft (pillars, shut lines, sills), so detail
+   follows the body's curves. keep(k, z) picks strips by ring position k (0 = underside,
+   7-8 = the +x side, 15 = top, 22-23 = the -x side) and z. Pushed out along the normals. */
+const R_LOFT = 30;
+const sides = (k, a, b) => (k >= a && k <= b) || (R_LOFT - 1 - k >= a && R_LOFT - 1 - k <= b);
+function skin(g, keep, out = 0.004) {
+  const P = g.attributes.position, N = g.attributes.normal, I = g.index.array;
+  const ringVerts = P.count - 2 * (R_LOFT + 1); // the two end caps come last
+  const pos = new Float32Array(P.count * 3);
+  for (let v = 0; v < P.count; v++) {
+    pos[v * 3] = P.getX(v) + N.getX(v) * out;
+    pos[v * 3 + 1] = P.getY(v) + N.getY(v) * out;
+    pos[v * 3 + 2] = P.getZ(v) + N.getZ(v) * out;
+  }
+  const idx = [];
+  for (let t = 0; t < I.length; t += 3) {
+    const a = I[t], b = I[t + 1], c = I[t + 2];
+    if (a >= ringVerts || b >= ringVerts || c >= ringVerts) continue;
+    const z = (P.getZ(a) + P.getZ(c)) / 2;
+    if (keep(c % R_LOFT, z)) idx.push(a, b, c);
+  }
+  const s = new THREE.BufferGeometry();
+  s.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  s.setAttribute('normal', N.clone());
+  s.setIndex(idx);
+  return s;
+}
+// x of the body's outer surface at height y and position z (for placing small parts)
+const _ray = new THREE.Raycaster();
+function sideX(mesh, y, z) {
+  _ray.set(new THREE.Vector3(3, y, z), new THREE.Vector3(-1, 0, 0));
+  const hit = _ray.intersectObject(mesh)[0];
+  return hit ? hit.point.x : 0.85;
+}
+/* Door shut lines, a handle and a dark sill on both sides of a body loft */
+function doors(g, bodyGeo, bodyMesh, front, rear, axles, wr, sillMat) {
+  const line = M.gloss();
+  g.add(new THREE.Mesh(skin(bodyGeo, (k, z) => sides(k, 4, 11) && (Math.abs(z - front) < 0.018 || Math.abs(z - rear) < 0.018), 0.002), line));
+  g.add(new THREE.Mesh(skin(bodyGeo, (k, z) => sides(k, 3, 4) && z > axles[1] + wr + 0.1 && z < axles[0] - wr - 0.1, 0.003), sillMat));
+  const hz = rear + 0.24, hy = 0.84;
+  for (const sx of [-1, 1]) {
+    const x = sideX(bodyMesh, hy, hz);
+    const h = rbox(0.022, 0.03, 0.17, 0.012, M.trim());
+    h.position.set(sx * (x + 0.006), hy, hz);
+    g.add(h);
+  }
+}
+
+/* Pillars on the glass cabin: a flush roof panel (r0..r1), roof rails that run down as the
+   A-pillars, a C-pillar ending at cEdge, a black B-pillar, and (optionally) a chrome line
+   along the bottom of the side windows from cEdge to wEnd. */
+function pillars(g, cab, roofMat, paint, r0, r1, cEdge, beltline, wEnd = 0.9) {
+  g.add(new THREE.Mesh(skin(cab, (k, z) => k >= 12 && k <= 17 && z > r0 && z < r1), roofMat));
+  g.add(new THREE.Mesh(skin(cab, (k, z) => (k === 12 || k === 17) && !(z > r0 && z < r1)), paint));
+  g.add(new THREE.Mesh(skin(cab, (k, z) => sides(k, 8, 11) && z < cEdge), paint));
+  g.add(new THREE.Mesh(skin(cab, (k, z) => sides(k, 8, 11) && z > -0.24 && z < -0.15, 0.003), M.gloss()));
+  if (!beltline) return;
+  const P = cab.attributes.position, N = cab.attributes.normal;
+  const rows = (P.count - 2 * (R_LOFT + 1)) / R_LOFT;
+  for (const v of [8, R_LOFT - 8]) {
+    const pts = [];
+    for (let i = 0; i < rows; i++) {
+      const j = i * R_LOFT + v, z = P.getZ(j);
+      if (z < cEdge - 0.02 || z > wEnd) continue;
+      pts.push(new THREE.Vector3(P.getX(j) + N.getX(j) * 0.006, P.getY(j) + N.getY(j) * 0.006, z));
+    }
+    if (pts.length > 1) g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 2, 0.007, 6), beltline));
+  }
+}
+
 /* ---------- shared materials ---------- */
 const env = (m, v) => { m.userData.env = v; return m; }; // reflection strength hint
 const M = {
@@ -253,7 +323,10 @@ function bodyM240i(paint) {
     const hw = interp(HW, z) + 0.012 * bump(z, ax, 0.55);
     return { yb: Math.max(interp(YB, z), arch), yt: interp(YT, z), hw, hwT: hw * 0.84, hwB: hw * 0.94, nT: 5.5, nB: 3, mid: 0.6, pinch: 0.9 };
   }, 0.1);
-  g.add(new THREE.Mesh(body, paint));
+  const bodyMesh = new THREE.Mesh(body, paint);
+  g.add(bodyMesh);
+  bodyMesh.updateMatrixWorld();
+  doors(g, body, bodyMesh, 0.98, -0.42, ax, wr + 0.065, M.trim());
 
   // greenhouse
   const CT = [[-1.62, 0.97], [-1.3, 1.1], [-0.85, 1.3], [-0.35, 1.392], [0.2, 1.39], [0.55, 1.25], [0.85, 1.07], [1.08, 0.92]];
@@ -265,12 +338,7 @@ function bodyM240i(paint) {
     return { yb, yt, hw: interp(CW, z), hwT: interp(CWT, z), hwB: interp(CW, z) * 0.98, n: 2.6, mid: 0.25 };
   }, 0.02);
   g.add(new THREE.Mesh(cab, M.glass()));
-  // painted roof skin
-  const roof = loft(-0.95, 0.42, 0.04, (z) => {
-    const yt = interp(CT, z) + 0.008;
-    return { yb: yt - 0.05, yt, hw: interp(CWT, z) + 0.02, hwT: interp(CWT, z) * 0.9, hwB: interp(CWT, z) + 0.03, n: 2.4, mid: 0.4 };
-  }, 0.08);
-  g.add(new THREE.Mesh(roof, paint));
+  pillars(g, cab, paint, paint, -0.95, 0.42, -1.08, M.chrome(), 0.86);
 
   // kidney grille
   const grilleMat = M.gloss();
@@ -310,7 +378,9 @@ function bodyM240i(paint) {
     t2.rotation.y = sx * -0.5;
     g.add(t1, t2);
     // mirrors
-    const mir = box(0.14, 0.085, 0.1, paint, sx * 0.87, 0.99, 0.82);
+    const mir = rbox(0.14, 0.085, 0.1, 0.035, paint); // rounded mirror housing
+    mir.position.set(sx * 0.87, 0.99, 0.82);
+    mir.rotation.y = sx * -0.12;
     const stem = box(0.08, 0.03, 0.04, M.trim(), sx * 0.8, 0.97, 0.84);
     g.add(mir, stem);
   }
@@ -346,7 +416,10 @@ function bodyGT3(paint) {
     const hw = interp(HW, z) + 0.12 * fl;
     return { yb: Math.max(interp(YB, z), arch), yt: interp(YT, z) + 0.035 * fl, hw, hwT: hw * (0.84 - 0.06 * fl), hwB: hw * 0.95, nT: 6, nB: 3, mid: 0.55, pinch: 0.9 };
   }, 0.1);
-  g.add(new THREE.Mesh(body, paint));
+  const bodyMesh = new THREE.Mesh(body, paint);
+  g.add(bodyMesh);
+  bodyMesh.updateMatrixWorld();
+  doors(g, body, bodyMesh, 0.95, -0.5, ax, wr + 0.06, M.carbon());
 
   const CT = [[-1.75, 0.95], [-1.35, 1.03], [-0.85, 1.2], [-0.35, 1.262], [0.15, 1.26], [0.5, 1.14], [0.85, 1.0], [1.12, 0.88]];
   const CW = [[-1.75, 0.68], [-0.6, 0.72], [0.4, 0.72], [1.12, 0.72]];
@@ -357,11 +430,7 @@ function bodyGT3(paint) {
     return { yb, yt, hw: interp(CW, z), hwT: interp(CWT, z), hwB: interp(CW, z) * 0.98, n: 2.8, mid: 0.25 };
   }, 0.02);
   g.add(new THREE.Mesh(cab, M.glass()));
-  const roof = loft(-0.9, 0.35, 0.04, (z) => {
-    const yt = interp(CT, z) + 0.008;
-    return { yb: yt - 0.05, yt, hw: interp(CWT, z) + 0.02, hwT: interp(CWT, z) * 0.9, hwB: interp(CWT, z) + 0.03, n: 2.4, mid: 0.4 };
-  }, 0.08);
-  g.add(new THREE.Mesh(roof, gold));
+  pillars(g, cab, gold, paint, -0.9, 0.35, -1.2, null);
 
   const carbon = M.carbon();
   // splitter + canards
@@ -386,7 +455,10 @@ function bodyGT3(paint) {
     t.rotation.y = sx * -0.2;
     g.add(t);
     // mirrors (gold)
-    g.add(box(0.15, 0.08, 0.1, gold, sx * 0.86, 0.98, 0.9));
+    const mir = rbox(0.15, 0.08, 0.1, 0.032, gold); // rounded mirror housing
+    mir.position.set(sx * 0.86, 0.98, 0.9);
+    mir.rotation.y = sx * -0.12;
+    g.add(mir);
     g.add(box(0.1, 0.025, 0.04, M.trim(), sx * 0.78, 0.96, 0.92));
     // swan-neck wing uprights
     const up = box(0.025, 0.42, 0.12, carbon, sx * 0.48, 1.12, -2.18);

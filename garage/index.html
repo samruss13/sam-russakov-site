@@ -113,7 +113,9 @@
       <a class="btn ghost" href="../assets/Sam-Russakov-Resume.pdf" download="Sam-Russakov-Resume.pdf">Download résumé <i>↓</i></a>
       <a class="btn ghost" href="https://www.linkedin.com/in/samuel-russakov-55b377239" target="_blank" rel="noopener">LinkedIn <i>↗</i></a>
     </div>
-    <button class="btn gold spin" type="button" data-open-picker><span class="key" aria-hidden="true">D</span> Take one for a spin</button>
+    <div class="play">
+      <button class="btn gold spin" type="button" data-open-picker><span class="key" aria-hidden="true">D</span> Take one for a spin</button>
+    </div>
   </section>
 
   </main>
@@ -189,9 +191,9 @@
         <button data-in="right" aria-label="Steer right">▶</button>
       </div>
       <div class="touch-r">
-        <button data-in="hand" class="small" aria-label="Handbrake">HB</button>
-        <button data-in="brake" aria-label="Brake">BRK</button>
-        <button data-in="gas" class="gas" aria-label="Accelerate">GAS</button>
+        <button data-in="hand" class="small" aria-label="Handbrake">Hand<br>brake</button>
+        <button data-in="brake" aria-label="Brake">Brake</button>
+        <button data-in="gas" class="gas" aria-label="Accelerate">Gas</button>
       </div>
     </div>
   </div>
@@ -202,7 +204,7 @@
   <noscript>
     <style>
       html { scroll-snap-type: none; }
-      #loader, #gl, .grain, .stops, .bottom, .hint, .spin, .picker, .hud { display: none !important; }
+      #loader, #gl, .grain, .stops, .bottom, .hint, .play, .picker, .hud { display: none !important; }
       .copy { position: static !important; opacity: 1 !important; visibility: visible !important; transform: none !important; margin: 0 auto; padding: 14vh var(--pad) 0; }
       .copy-contact { padding-bottom: 14vh; }
     </style>

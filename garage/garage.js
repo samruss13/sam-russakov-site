@@ -20,7 +20,11 @@ const ease = (t) => t * t * (3 - 2 * t);
 const pad2 = (n) => String(n).padStart(2, '0');
 const isTouch = matchMedia('(hover: none), (pointer: coarse)').matches;
 const asset = (p) => `../${p}`;
-if (isTouch) document.body.classList.add('is-touch');
+if (isTouch) {
+  document.body.classList.add('is-touch');
+  const hint = document.querySelector('.hint');
+  if (hint && hint.firstChild) hint.firstChild.textContent = 'Swipe up to step inside ';
+}
 
 const GOLD = 0xe3a10a;
 
@@ -858,6 +862,8 @@ addEventListener('resize', resize);
    ========================================================= */
 const camPos = new THREE.Vector3(), camLook = new THREE.Vector3();
 let camFov = 50, first = true;
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let cutKey = null, snapNext = false, neonStart = null;
 const clock = new THREE.Clock();
 let hoverTick = 0;
 
@@ -882,9 +888,14 @@ function frame() {
 
   // camera target from the scroll position (or the picker)
   let tp, tl, tf;
+  const still = reduceMotion.matches;
   if (ui.picking) {
     const c = PICK[ui.pickKey];
     tp = c.pos; tl = c.look; tf = c.fov;
+  } else if (still) {
+    // reduced motion: no flight between stops; hold the nearest stop
+    const S = STOPS[Math.round(ui.progress)];
+    tp = S.pos; tl = S.look; tf = S.fov;
   } else {
     const p = ui.progress;
     const i = Math.min(Math.floor(p), 2), f = ease(clamp(p - i, 0, 1));
@@ -892,11 +903,21 @@ function frame() {
     tl = STOPS[i].look.clone().lerp(STOPS[i + 1].look, f);
     tf = lerp(STOPS[i].fov, STOPS[i + 1].fov, f);
   }
-  mouse.sx = lerp(mouse.sx, mouse.x, 0.05);
-  mouse.sy = lerp(mouse.sy, mouse.y, 0.05);
+  if (still) {
+    // ...and change views with a quick dip to black instead of moving the camera
+    const key = ui.picking ? 'pick-' + ui.pickKey : 'stop-' + Math.round(ui.progress);
+    if (cutKey === null) cutKey = key;
+    else if (key !== cutKey) {
+      cutKey = key;
+      fade.classList.add('quick', 'on');
+      setTimeout(() => { snapNext = true; fade.classList.remove('on'); setTimeout(() => fade.classList.remove('quick'), 220); }, 170);
+    }
+  }
+  mouse.sx = lerp(mouse.sx, still ? 0 : mouse.x, 0.05);
+  mouse.sy = lerp(mouse.sy, still ? 0 : mouse.y, 0.05);
   const par = new THREE.Vector3(mouse.sx * 0.25, mouse.sy * 0.12, 0);
-  if (first) { camPos.copy(tp); camLook.copy(tl); camFov = tf; first = false; }
-  const k = 1 - Math.exp(-dt * (ui.picking ? 3 : 5));
+  if (first || snapNext) { camPos.copy(tp); camLook.copy(tl); camFov = tf; first = false; snapNext = false; }
+  const k = still ? 0 : 1 - Math.exp(-dt * (ui.picking ? 3 : 5));
   camPos.lerp(tp.clone().add(par), k);
   camLook.lerp(tl, k);
   camFov = lerp(camFov, tf, k);
@@ -918,10 +939,15 @@ function frame() {
     f.g.position.z = -D + 0.04 + f.hover * 0.08;
   });
 
-  // neon: flickers on at load, then a gentle hum
-  const on = document.body.classList.contains('loaded') ? clamp((t - 1.4) * 1.2, 0, 1) : 0;
-  const flick = on < 1 ? (Math.sin(t * 60) > 0.2 ? on : on * 0.2) : 0.94 + Math.sin(t * 7.0) * 0.03 + (Math.random() < 0.004 ? -0.4 : 0);
-  G.neon.forEach((m) => (m.opacity = flick));
+  // neon: a two-flicker ignition once the garage opens (kept under 3 flashes a second), then a steady glow.
+  // With reduced motion it simply fades on.
+  if (neonStart === null && document.body.classList.contains('loaded')) neonStart = t + 0.9;
+  const n = neonStart === null ? -1 : t - neonStart;
+  let glow;
+  if (n < 0) glow = 0;
+  else if (still) glow = clamp(n / 0.8, 0, 1);
+  else glow = n < 0.18 ? 1 : n < 0.5 ? 0.12 : n < 0.68 ? 1 : n < 0.95 ? 0.25 : clamp(0.25 + (n - 0.95) * 2.5, 0, 0.96) + Math.sin(t * 1.3) * 0.02;
+  G.neon.forEach((m) => (m.opacity = glow));
 
   if (composer) composer.render(); else renderer.render(scene, camera);
   requestAnimationFrame(frame);
