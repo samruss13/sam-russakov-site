@@ -20,6 +20,28 @@
 </head>
 <body>
 
+  <a class="skip" href="#contact">Skip to contact</a>
+
+  <!-- If the 3D never starts (no WebGL, blocked CDN, script error), switch to a plain readable page.
+       Plain (non-module) script so it still runs when the module scripts fail to load. -->
+  <script>
+    (function () {
+      var b = document.body;
+      window.__garageFallback = function () {
+        if (b.classList.contains('no-3d') || b.classList.contains('ready-3d')) return;
+        b.classList.add('no-3d', 'loaded');
+        document.documentElement.classList.add('no-3d');
+      };
+      window.addEventListener('error', function (e) {
+        if (b.classList.contains('ready-3d')) return;
+        if (e instanceof ErrorEvent || (e.target && e.target.tagName === 'SCRIPT')) window.__garageFallback();
+      }, true);
+      // slow start: offer the plain version, then switch automatically
+      setTimeout(function () { if (!b.classList.contains('loaded') && !b.classList.contains('assets-ready')) b.classList.add('slow-start'); }, 12000);
+      setTimeout(function () { if (!b.classList.contains('loaded') && !b.classList.contains('assets-ready')) window.__garageFallback(); }, 30000);
+    })();
+  </script>
+
   <!-- Loader -->
   <div id="loader" aria-hidden="true">
     <div class="loader-inner">
@@ -27,10 +49,11 @@
       <div class="loader-count"><span id="loader-num">000</span><span class="loader-unit">MPH</span></div>
       <div class="loader-bar"><i id="loader-bar"></i></div>
       <p class="label">Opening the garage</p>
+      <p class="loader-slow">Taking a while? <button type="button" onclick="window.__garageFallback()">Open the simple version</button></p>
     </div>
   </div>
 
-  <canvas id="gl"></canvas>
+  <canvas id="gl" aria-hidden="true"></canvas>
   <div class="grain"></div>
   <div class="fade" id="fade"></div>
 
@@ -44,29 +67,29 @@
   </header>
 
   <!-- Scroll track: four stops, the 3D camera follows -->
-  <main class="stops" aria-hidden="true">
+  <div class="stops" aria-hidden="true">
     <div class="stop"></div><div class="stop"></div><div class="stop"></div><div class="stop"></div>
-  </main>
+  </div>
+
+  <main id="content">
 
   <!-- 00 Outside -->
-  <section class="copy" data-stop="0">
-    <p class="label kicker">Analytical · Detail-oriented · Committed</p>
-    <h1>Built to perform.<br><em>Driven by detail.</em></h1>
+  <section class="copy" data-stop="0" id="top" aria-labelledby="h-top">
+    <p class="fallback-note" role="note">The 3D garage couldn't start on this device, so here's the simple version. <a href="../">Open the classic site</a></p>
+    <h1 id="h-top" tabindex="-1">Built to perform.<br><em>Driven by detail.</em></h1>
     <p class="sub">I bring the discipline I've built on the track, on the road and at the workbench to every project: careful preparation, steady effort and a focus on getting the details right. The door's open, come in.</p>
     <p class="label hint">Scroll to step inside <i></i></p>
   </section>
 
   <!-- 01 Strengths -->
-  <section class="copy" data-stop="1">
-    <p class="label kicker"><span class="num">01</span> Strengths</p>
-    <h2>On the <em>wall.</em></h2>
+  <section class="copy" data-stop="1" id="strengths-stop" aria-labelledby="h-strengths">
+    <h2 id="h-strengths" tabindex="-1">On the <em>wall.</em></h2>
     <ol class="strengths" id="strengths"></ol>
   </section>
 
   <!-- 02 About -->
-  <section class="copy copy-about" data-stop="2">
-    <p class="label kicker"><span class="num">02</span> About</p>
-    <h2>Hi, I'm <em>Sam Russakov</em>.</h2>
+  <section class="copy copy-about" data-stop="2" id="about" aria-labelledby="h-about">
+    <h2 id="h-about" tabindex="-1">Hi, I'm <em>Sam Russakov</em>.</h2>
     <p class="sub">I'm analytical, detail-oriented and committed to doing the work right. I prepare carefully, learn quickly and hold myself to a high standard from the first step to the finish.</p>
     <div class="certs">
       <p class="label">Certifications</p>
@@ -78,9 +101,8 @@
   </section>
 
   <!-- 03 Contact -->
-  <section class="copy copy-contact" data-stop="3">
-    <p class="label kicker"><span class="num">03</span> Contact</p>
-    <h2>Let's <em>talk</em>.</h2>
+  <section class="copy copy-contact" data-stop="3" id="contact" aria-labelledby="h-contact">
+    <h2 id="h-contact" tabindex="-1">Let's <em>talk</em>.</h2>
     <p class="sub">I'm open to new opportunities in product, marketing and communications, bringing 10+ years of hands-on, customer-facing experience. Email is the best way to reach me.</p>
     <div class="mail-row">
       <a class="mail" href="mailto:sam.russakov@gmail.com">sam.russakov@gmail.com</a>
@@ -91,8 +113,10 @@
       <a class="btn ghost" href="../assets/Sam-Russakov-Resume.pdf" download="Sam-Russakov-Resume.pdf">Download résumé <i>↓</i></a>
       <a class="btn ghost" href="https://www.linkedin.com/in/samuel-russakov-55b377239" target="_blank" rel="noopener">LinkedIn <i>↗</i></a>
     </div>
-    <button class="btn gold spin" type="button" data-open-picker><span class="key">D</span> Take one for a spin</button>
+    <button class="btn gold spin" type="button" data-open-picker><span class="key" aria-hidden="true">D</span> Take one for a spin</button>
   </section>
+
+  </main>
 
   <!-- Bottom nav -->
   <nav class="bottom" aria-label="Sections">
@@ -104,7 +128,7 @@
   </nav>
 
   <!-- Strength panel -->
-  <aside class="panel" id="panel" aria-hidden="true">
+  <aside class="panel" id="panel" role="dialog" aria-modal="true" aria-labelledby="pp-title" aria-hidden="true">
     <button class="panel-close label" data-close>Close <i>×</i></button>
     <div class="panel-inner">
       <p class="label" id="pp-kicker"></p>
@@ -126,25 +150,25 @@
   </aside>
 
   <!-- Car picker -->
-  <div class="picker" id="picker" aria-hidden="true">
+  <div class="picker" id="picker" role="dialog" aria-modal="true" aria-labelledby="pick-title" aria-hidden="true">
     <div class="picker-inner">
       <button class="panel-close label" data-close-picker>Close <i>×</i></button>
       <p class="label kicker">Pick a place, then a car</p>
-      <div class="locs" id="locs" role="tablist" aria-label="Location"></div>
+      <div class="locs" id="locs" role="group" aria-label="Location"></div>
       <h2 id="pick-title">Willow Springs, <em>golden hour.</em></h2>
       <p class="sub" id="pick-blurb">A 2.5-mile desert circuit modelled on Big Willow. Pull out of the pit garage, cross the line and set a lap.</p>
       <div class="cars" id="cars"></div>
-      <p class="label controls-note" id="controls-note">W A S D / arrows drive · Hold left mouse to steer · Space handbrake · C camera · R reset · M sound · Esc park</p>
+      <p class="label controls-note" id="controls-note">WASD or arrow keys to drive. Hold the left mouse button to steer. Space for the handbrake, C camera, R reset, M sound, Esc to park.</p>
     </div>
   </div>
 
   <!-- Drive HUD -->
-  <div class="hud" id="hud" aria-hidden="true">
+  <div class="hud" id="hud" aria-label="Drive controls" aria-hidden="true" inert>
     <div class="hud-tl">
       <button class="label hud-btn" id="hud-park">Park it <span class="kbd">Esc</span></button>
       <button class="label hud-btn" id="hud-cam">Camera <span class="kbd">C</span></button>
       <button class="label hud-btn" id="hud-reset">Reset <span class="kbd">R</span></button>
-      <button class="label hud-btn" id="hud-sound">Sound on <span class="kbd">M</span></button>
+      <button class="label hud-btn" id="hud-sound" aria-pressed="true">Sound on <span class="kbd">M</span></button>
     </div>
     <div class="hud-laps">
       <div><span class="label" id="hud-cur-label">Lap</span><b id="hud-cur">Cross the line</b></div>
@@ -156,8 +180,8 @@
       <div class="rpm"><i id="hud-rpm"></i></div>
       <div class="speed-row"><span id="hud-speed">000</span><span class="unit">MPH</span><span class="gear" id="hud-gear">N</span></div>
     </div>
-    <p class="hud-msg" id="hud-msg"></p>
-    <p class="label hud-keys">W A S D drive · Hold left mouse to steer · Space handbrake</p>
+    <p class="hud-msg" id="hud-msg" role="status" aria-live="polite"></p>
+    <p class="label hud-keys">WASD to drive · hold the left mouse button to steer · Space for the handbrake</p>
     <div class="steer-ind" id="steer-ind" aria-hidden="true"><i></i></div>
     <div class="touch" id="touch">
       <div class="touch-l">
@@ -171,6 +195,19 @@
       </div>
     </div>
   </div>
+
+  <!-- announcements for screen readers (copy confirmations etc.) -->
+  <p class="sr-only" id="sr-status" role="status" aria-live="polite"></p>
+
+  <noscript>
+    <style>
+      html { scroll-snap-type: none; }
+      #loader, #gl, .grain, .stops, .bottom, .hint, .spin, .picker, .hud { display: none !important; }
+      .copy { position: static !important; opacity: 1 !important; visibility: visible !important; transform: none !important; margin: 0 auto; padding: 14vh var(--pad) 0; }
+      .copy-contact { padding-bottom: 14vh; }
+    </style>
+    <p class="noscript-note">Turn on JavaScript to step inside the 3D garage. Everything below still works.</p>
+  </noscript>
 
   <script type="module" src="garage.js"></script>
 </body>

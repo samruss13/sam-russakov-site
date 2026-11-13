@@ -28,23 +28,47 @@ const GOLD = 0xe3a10a;
    Renderer
    ========================================================= */
 const canvas = $('#gl');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2));
-renderer.setSize(innerWidth, innerHeight);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-RectAreaLightUniformsLib.init();
+// Can this device draw the 3D garage? If not, the plain page (body.no-3d) takes over and everything else still works.
+let renderer = null;
+try {
+  const probe = document.createElement('canvas');
+  if (window.WebGLRenderingContext && (probe.getContext('webgl2') || probe.getContext('webgl'))) {
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  }
+} catch { renderer = null; }
+const GL = !!renderer;
+if (GL) {
+  renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1.5 : 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.0;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  RectAreaLightUniformsLib.init();
+}
+let plain = false;
+const isPlain = () => plain || document.body.classList.contains('no-3d');
+function goPlain() {
+  if (ui.mode === 'drive') { drive?.exit(); ui.mode = 'garage'; document.body.classList.remove('driving'); }
+  if (ui.picking) closePicker();
+  if (ui.panelOpen) closePanel();
+  document.body.classList.add('no-3d', 'loaded');
+  document.documentElement.classList.add('no-3d');
+  document.documentElement.classList.remove('locked');
+  document.body.classList.remove('locked');
+  plain = true;
+}
+// the graphics driver can drop the 3D at any time (sleep, low memory): fall back instead of freezing
+canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); goPlain(); });
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x07080b);
 scene.fog = new THREE.Fog(0x07080b, 30, 90);
 const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 500);
 
-const pmrem = new THREE.PMREMGenerator(renderer);
-const envTex = pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture;
+const pmrem = GL ? new THREE.PMREMGenerator(renderer) : null;
+const envTex = GL ? pmrem.fromScene(new RoomEnvironment(renderer), 0.04).texture : null;
 
 /* =========================================================
    Loading (textures) + loader counter
@@ -53,7 +77,22 @@ const manager = new THREE.LoadingManager();
 const texLoader = new THREE.TextureLoader(manager);
 let loadTarget = 0, loadShown = 0, loadDone = false;
 manager.onProgress = (_, loaded, total) => { loadTarget = loaded / total; };
-manager.onLoad = () => { loadTarget = 1; loadDone = true; };
+manager.onLoad = () => {
+  loadTarget = 1; loadDone = true;
+  document.body.classList.add('assets-ready');
+  // finish on a timer, not on frames: background tabs and slow phones can drop to ~1 frame a second
+  setTimeout(finishLoader, 1100);
+};
+function finishLoader() {
+  if (document.body.classList.contains('ready-3d') || isPlain()) return;
+  $('#loader-num').textContent = '100';
+  $('#loader-bar').style.transform = 'scaleX(1)';
+  document.body.classList.add('loaded', 'ready-3d');
+  // arrived on a shared link like /garage/#contact? go straight there
+  const i = STOP_IDS[location.hash.slice(1)];
+  if (i != null) setTimeout(() => focusStop(i, true), 400);
+  readScroll();
+}
 function loadTex(url, onLoad) {
   const t = texLoader.load(url, (tx) => onLoad && onLoad(tx));
   t.colorSpace = THREE.SRGBColorSpace;
@@ -502,11 +541,40 @@ function readScroll() {
   ui.stop = s;
 }
 addEventListener('scroll', readScroll, { passive: true });
-function goStop(i) {
+const smoothOK = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
+function goStop(i, instant = false) {
+  const behavior = instant || !smoothOK() ? 'auto' : 'smooth';
+  if (isPlain()) { copies[i].scrollIntoView({ behavior }); return; }
   const max = document.documentElement.scrollHeight - innerHeight;
-  scrollTo({ top: (max * i) / 3, behavior: 'smooth' });
+  scrollTo({ top: (max * i) / 3, behavior });
 }
-navBtns.forEach((b) => b.addEventListener('click', () => goStop(+b.dataset.go)));
+// jump to a stop and put keyboard / screen-reader focus on its heading once it's on screen
+function focusStop(i, instant = false) {
+  goStop(i, instant);
+  const h = copies[i].querySelector('h1, h2');
+  let tries = 0;
+  const go = () => {
+    if (isPlain() || copies[i].classList.contains('on')) h.focus({ preventScroll: true });
+    else if (tries++ < 60) setTimeout(go, 50);
+  };
+  go();
+}
+navBtns.forEach((b) => b.addEventListener('click', () => focusStop(+b.dataset.go)));
+// skip link and shareable links (#strengths-stop, #about, #contact)
+const STOP_IDS = { top: 0, 'strengths-stop': 1, about: 2, contact: 3 };
+$('.skip').addEventListener('click', (e) => { e.preventDefault(); focusStop(3); });
+addEventListener('hashchange', () => { const i = STOP_IDS[location.hash.slice(1)]; if (i != null) focusStop(i); });
+
+// keep keyboard focus inside whichever layer is on top (panel, picker or the drive HUD)
+const layers = () => [$('.skip'), $('.top'), $('#content'), $('.bottom'), $('#panel'), $('#picker'), $('#hud')];
+function isolate(keep) { for (const el of layers()) if (el) el.inert = el !== keep; }
+function release() {
+  for (const el of layers()) if (el) el.inert = false;
+  $('#hud').inert = ui.mode !== 'drive';
+}
+const announce = (msg) => { const el = $('#sr-status'); el.textContent = ''; setTimeout(() => { el.textContent = msg; }, 30); };
+let returnFocus = null;
+const restoreFocus = () => { const el = returnFocus; returnFocus = null; if (el && document.contains(el)) setTimeout(() => el.focus({ preventScroll: true }), 40); };
 
 // strengths list
 const list = $('#strengths');
@@ -545,14 +613,17 @@ function openPanel(i) {
   $('#pp-role').textContent = p.role;
   $('#pp-body').innerHTML = p.body.map((t) => `<p>${t}</p>`).join('');
   $('#pp-gallery').innerHTML = p.gallery
-    .map((g) => `<figure${p.ratio ? ` style="aspect-ratio:${p.ratio}"` : ''}><img src="${asset(g)}" alt="${p.title}" loading="lazy"></figure>`).join('');
+    .map((g, n) => `<figure${p.ratio ? ` style="aspect-ratio:${p.ratio}"` : ''}><img src="${asset(g)}" alt="${p.title}, photo ${n + 2}" loading="lazy"></figure>`).join('');
   $('#pp-next-title').textContent = next.title;
   panel.scrollTop = 0;
+  if (!ui.panelOpen) returnFocus = document.activeElement;
   panel.classList.add('open');
   panel.setAttribute('aria-hidden', 'false');
   document.body.classList.add('panel-open');
   ui.panelOpen = true;
   lockScroll(true);
+  isolate(panel);
+  requestAnimationFrame(() => $('[data-close]', panel).focus({ preventScroll: true }));
 }
 function closePanel() {
   panel.classList.remove('open');
@@ -560,6 +631,8 @@ function closePanel() {
   document.body.classList.remove('panel-open');
   ui.panelOpen = false;
   lockScroll(false);
+  release();
+  restoreFocus();
 }
 $('[data-close]', panel).addEventListener('click', closePanel);
 $('#pp-next').addEventListener('click', () => {
@@ -578,6 +651,7 @@ $$('[data-copy]').forEach((btn) => btn.addEventListener('click', async () => {
     ta.remove();
   }
   btn.textContent = ok ? 'Copied' : 'Press Ctrl+C';
+  announce(ok ? 'Email address copied' : 'Copy failed. Select the address and press Ctrl+C');
   btn.classList.toggle('copied', ok);
   setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1800);
 }));
@@ -600,58 +674,64 @@ function hotCar(key) {
 cards.forEach((c) => {
   c.addEventListener('pointerenter', () => hotCar(c.dataset.car));
   c.addEventListener('focus', () => hotCar(c.dataset.car));
-  c.addEventListener('click', () => { drive.sound.unlock(); startDrive(c.dataset.car); }); // audio must start inside the tap
+  c.addEventListener('click', () => { if (!drive) return; drive.sound.unlock(); startDrive(c.dataset.car); }); // audio must start inside the tap
 });
 
 // location switch (remembered in this browser)
 try { ui.loc = localStorage.getItem('garage-loc') || 'willow'; } catch { ui.loc = 'willow'; }
 if (!LOCATIONS[ui.loc]) ui.loc = 'willow';
-$('#locs').innerHTML = Object.values(LOCATIONS).map((l) => `<button role="tab" data-loc="${l.key}"><span class="full">${l.name}</span><span class="short">${l.short}</span><small>${l.tag}</small></button>`).join('');
+$('#locs').innerHTML = Object.values(LOCATIONS).map((l) => `<button type="button" aria-pressed="false" data-loc="${l.key}"><span class="full">${l.name}</span><span class="short">${l.short}</span><small>${l.tag}</small></button>`).join('');
 function setLoc(key) {
   ui.loc = key;
   try { localStorage.setItem('garage-loc', key); } catch {}
-  $$('#locs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.loc === key)));
+  $$('#locs button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.loc === key)));
   $('#pick-title').innerHTML = LOCATIONS[key].title;
   $('#pick-blurb').textContent = LOCATIONS[key].blurb;
 }
 $$('#locs button').forEach((b) => b.addEventListener('click', () => setLoc(b.dataset.loc)));
 setLoc(ui.loc);
 function openPicker(key) {
-  if (ui.mode !== 'garage') return;
+  if (ui.mode !== 'garage' || isPlain()) return;
   if (ui.panelOpen) closePanel();
+  returnFocus = document.activeElement;
   hotCar(key || ui.pickKey);
   ui.picking = true;
+  isolate(picker);
   picker.classList.add('open');
   picker.setAttribute('aria-hidden', 'false');
   document.body.classList.add('picking');
   lockScroll(true);
   setTimeout(() => $(`.car-card[data-car="${ui.pickKey}"]`)?.focus({ preventScroll: true }), 50);
 }
-function closePicker() {
+function closePicker(keepFocus = false) {
   ui.picking = false;
   picker.classList.remove('open');
   picker.setAttribute('aria-hidden', 'true');
   document.body.classList.remove('picking');
   lockScroll(false);
+  release();
+  if (keepFocus) returnFocus = null; else restoreFocus();
 }
 $$('[data-open-picker]').forEach((b) => b.addEventListener('click', () => openPicker()));
-$('[data-close-picker]').addEventListener('click', closePicker);
+$('[data-close-picker]').addEventListener('click', () => closePicker());
 
 /* =========================================================
    Drive mode
    ========================================================= */
-const drive = createDrive(renderer);
-window.__drive = drive; // handy for poking at the physics from the console
+const drive = GL ? createDrive(renderer) : null;
+if (new URLSearchParams(location.search).has('debug')) window.__drive = drive; // console access for testing: add ?debug
 const fade = $('#fade');
 function startDrive(key) {
   fade.classList.add('on');
   setTimeout(() => {
-    closePicker();
+    closePicker(true);
     lockScroll(true);
     drive.enter(key, ui.loc);
     ui.mode = 'drive';
     document.body.classList.add('driving');
     $('#hud').setAttribute('aria-hidden', 'false');
+    isolate($('#hud'));
+    document.activeElement?.blur(); // keys drive the car; don't leave a button focused under Space
     if (composer) { renderPass.scene = drive.scene; renderPass.camera = drive.camera; }
     setTimeout(() => fade.classList.remove('on'), 120);
   }, 650);
@@ -665,14 +745,15 @@ function exitDrive() {
     $('#hud').setAttribute('aria-hidden', 'true');
     if (composer) { renderPass.scene = scene; renderPass.camera = camera; }
     lockScroll(false);
-    goStop(3);
+    release();
+    focusStop(3, true);
     setTimeout(() => fade.classList.remove('on'), 150);
   }, 650);
 }
 $('#hud-park').addEventListener('click', exitDrive);
 $('#hud-cam').addEventListener('click', () => drive.cycleCamera());
 $('#hud-reset').addEventListener('click', () => drive.reset());
-$('#hud-sound').addEventListener('click', () => { drive.sound.unlock(); drive.toggleSound(); });
+$('#hud-sound').addEventListener('click', () => { drive?.sound.unlock(); drive?.toggleSound(); });
 
 // touch controls
 $$('#touch [data-in]').forEach((b) => {
@@ -746,7 +827,7 @@ canvas.addEventListener('click', (e) => {
    Post-processing (desktop only)
    ========================================================= */
 let composer = null, renderPass = null;
-if (!isTouch) {
+if (GL && !isTouch) {
   composer = new EffectComposer(renderer);
   renderPass = new RenderPass(scene, camera);
   composer.addPass(renderPass);
@@ -758,14 +839,16 @@ if (!isTouch) {
    Resize
    ========================================================= */
 function resize() {
-  renderer.setSize(innerWidth, innerHeight);
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  composer?.setSize(innerWidth, innerHeight);
-  STOPS = stops();
-  PICK = pickCams();
-  layoutFrames();
-  drive.resize();
+  if (GL) {
+    renderer.setSize(innerWidth, innerHeight);
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    composer?.setSize(innerWidth, innerHeight);
+    STOPS = stops();
+    PICK = pickCams();
+    layoutFrames();
+    drive.resize();
+  }
   readScroll();
 }
 addEventListener('resize', resize);
@@ -784,14 +867,10 @@ function frame() {
 
   // loader
   if (!document.body.classList.contains('loaded')) {
-    loadShown = lerp(loadShown, loadTarget, 0.08);
+    loadShown = lerp(loadShown, loadTarget, 1 - Math.exp(-dt * 5)); // time-based, not per-frame
     $('#loader-num').textContent = String(Math.round(loadShown * 100)).padStart(3, '0');
     $('#loader-bar').style.transform = `scaleX(${loadShown})`;
-    if (loadDone && loadShown > 0.985 && t > 1.1) {
-      $('#loader-num').textContent = '100';
-      document.body.classList.add('loaded');
-      readScroll();
-    }
+    if (loadDone && loadShown > 0.985 && t > 1.1) finishLoader();
   }
 
   if (ui.mode === 'drive') {
@@ -863,6 +942,14 @@ async function start() {
       new Promise((r) => setTimeout(r, 2500)),
     ]);
   } catch {}
+  if (!GL) {
+    // no 3D on this device: show the plain page (everything except driving still works)
+    goPlain();
+    readScroll();
+    const i = STOP_IDS[location.hash.slice(1)];
+    if (i != null) focusStop(i, true);
+    return;
+  }
   buildGarage();
   layoutFrames();
   readScroll();

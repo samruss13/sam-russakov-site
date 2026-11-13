@@ -34,7 +34,7 @@ export function createDrive(renderer) {
   const camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.3, 7000);
   const sound = createSound();
   const soundBtn = $('#hud-sound');
-  const showSound = () => { if (soundBtn) soundBtn.firstChild.textContent = sound.enabled ? 'Sound on ' : 'Sound off '; };
+  const showSound = () => { if (soundBtn) { soundBtn.firstChild.textContent = sound.enabled ? 'Sound on ' : 'Sound off '; soundBtn.setAttribute('aria-pressed', String(sound.enabled)); } };
   showSound();
   const worlds = {};
   let W = null; // the active world
