@@ -1,0 +1,2 @@
+# preview renders from: blender -b -P build_cars.py -- . --preview
+_preview/

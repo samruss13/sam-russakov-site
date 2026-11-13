@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 /* =========================================================
    Procedural cars, built from code (no model files).
@@ -272,7 +274,8 @@ const SPECS = {
     blurb: 'My daily. Smooth, playful and forgiving.',
     stats: [['Power', '335 hp'], ['Drive', 'Rear-wheel'], ['Tyres', 'Street']],
     bars: { speed: 0.72, grip: 0.62, braking: 0.6 },
-    L: [-2.215, 2.215], axles: [1.43, -1.26], wheel: { r: 0.32, w: 0.23, rim: 0.235, style: 'road', rimColor: 0xc9ccd1, caliperColor: 0x1f4fbf }, track: [0.775, 0.785],
+    // F22 M240i: 4432 long, 2690 wheelbase, 18in wheels (matches models/build_cars.py)
+    L: [-2.216, 2.216], axles: [1.436, -1.254], wheel: { r: 0.318, w: 0.235, rim: 0.229, style: 'road', rimColor: 0x6a6d72, caliperColor: 0x1f4fbf }, track: [0.76, 0.778],
     // Mineral Grey metallic
     paint: () => env(new THREE.MeshPhysicalMaterial({ color: 0x3a3f47, metalness: 0.45, roughness: 0.38, clearcoat: 1, clearcoatRoughness: 0.08 }), 0.5),
     // physics
@@ -285,7 +288,8 @@ const SPECS = {
     blurb: 'Built for the track. Fast, sharp and unforgiving.',
     stats: [['Power', '590 hp'], ['Drive', 'Rear-wheel'], ['Tyres', 'Slicks']],
     bars: { speed: 0.95, grip: 0.92, braking: 0.95 },
-    L: [-2.45, 2.5], axles: [1.45, -1.39], wheel: { r: 0.345, w: 0.31, rim: 0.27, style: 'race', rimColor: 0x1a1a1a, caliperColor: 0xc9a45c }, track: [0.86, 0.87],
+    // M4 GT3: 2917 wheelbase, body length as measured from side-on photos, 18in centre-lock wheels (matches models/build_cars.py)
+    L: [-2.41, 2.17], axles: [1.44, -1.477], wheel: { r: 0.345, w: 0.31, rim: 0.229, style: 'race', rimColor: 0x1a1a1a, caliperColor: 0xc9a45c }, track: [0.87, 0.875],
     // satin black
     paint: () => env(new THREE.MeshPhysicalMaterial({ color: 0x0b0b0d, metalness: 0.2, roughness: 0.55, clearcoat: 0.3, clearcoatRoughness: 0.45 }), 0.3),
     phys: { maxSpeed: 79, accel: 9.6, brake: 17, grip: 13, steer: 0.48, mass: 1.0 },
@@ -504,8 +508,94 @@ function bodyGT3(paint) {
   return g;
 }
 
+/* ---------- Blender models ----------
+   models/build_cars.py builds each car in Blender and exports models/<key>.glb with three parts:
+   body, wheel (the rolling part) and caliper. Materials are matched by name and swapped for the
+   site's own, so the cars keep their paint, reflections and brake lights. Until a model has loaded
+   (or if it fails), the procedural car below is used. */
+const MODELS = {};          // key -> { body, wheel, caliper }
+const waiting = [];         // cars built before their model arrived
+let loading = null;
+
+export function loadCarModels(manager) {
+  if (loading) return loading;
+  const draco = new DRACOLoader(manager);
+  draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/gltf/');
+  const loader = new GLTFLoader(manager);
+  loader.setDRACOLoader(draco);
+  loading = Promise.all(Object.keys(SPECS).map((key) =>
+    loader.loadAsync(new URL(`./models/${key}.glb?v=7`, import.meta.url).href)
+      .then((g) => {
+        const part = (n) => g.scene.getObjectByName(n);
+        MODELS[key] = { body: part('body'), wheel: part('wheel'), caliper: part('caliper') };
+        for (let i = waiting.length - 1; i >= 0; i--) if (waiting[i].key === key) useModel(waiting.splice(i, 1)[0]);
+      })
+      .catch((e) => console.warn(`Car model ${key} not loaded, using the built-in one.`, e))
+  ));
+  return loading;
+}
+
+function modelMaterials(S) {
+  const W = S.wheel;
+  const std = (color, roughness, metalness = 0, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra });
+  const see = (o) => ({ transparent: true, depthWrite: false, ...o });
+  const made = {};
+  const make = {
+    paint: () => S.paint(),
+    glass: () => env(new THREE.MeshPhysicalMaterial(see({ color: 0x0a0c10, roughness: 0.04, metalness: 0, clearcoat: 1, opacity: 0.55 })), 0.5),
+    lens: () => env(new THREE.MeshPhysicalMaterial(see({ color: 0xffffff, roughness: 0.02, opacity: 0.16 })), 0.6),
+    lens_red: () => std(0x5a0404, 0.12, 0, see({ opacity: 0.5 })),
+    // the model's lamps are larger than the old rings, so they glow a little less
+    head: () => Object.assign(M.head(), { emissiveIntensity: 1.3 }),
+    chrome: M.chrome, trim: M.trim, gloss: M.gloss, well: M.well, tail: M.tail, amber: M.amber, carbon: M.carbon, tire: M.tire,
+    gap: () => std(0x040404, 1),
+    housing: () => std(0x16171a, 0.3, 0.8),
+    grille: () => std(0x0b0b0c, 0.7),
+    interior: () => std(0x141210, 0.8),
+    seat: () => std(0x1d1a17, 0.6),
+    gold: () => std(0xc9a45c, 0.28, 1),
+    rim: () => std(W.rimColor, W.style === 'race' ? 0.45 : 0.22, 0.9),
+    barrel: () => std(0x2a2a2a, 0.4, 0.8),
+    disc: () => std(0x777777, 0.35, 0.9),
+    caliper: () => std(W.caliperColor, 0.4, 0.3),
+  };
+  return (name) => made[name] || (made[name] = (make[name] || (() => std(0x808080, 0.5)))());
+}
+
+const SHADOW_CASTERS = new Set(['paint', 'tire', 'carbon', 'gold', 'well']);
+
+function cloneModel(src, mats) {
+  const o = src.clone();
+  o.position.set(0, 0, 0); o.rotation.set(0, 0, 0); o.scale.set(1, 1, 1);
+  o.traverse((m) => {
+    if (!m.isMesh) return;
+    const name = m.material.name;
+    m.material = mats(name);
+    // only the big surfaces cast shadows; glass, lamps, trim bits and the interior would just cost frame time
+    m.castShadow = SHADOW_CASTERS.has(name);
+    m.receiveShadow = true;
+  });
+  return o;
+}
+
+function useModel(car) {
+  const G = MODELS[car.key];
+  if (!G || !G.body || !G.wheel) return;
+  const mats = modelMaterials(car.spec);
+  car.body.clear();
+  car.body.add(cloneModel(G.body, mats));
+  for (const w of car.wheels) {
+    w.spin.clear();
+    w.spin.add(cloneModel(G.wheel, mats));
+    for (const c of [...w.pivot.children]) if (c !== w.spin) w.pivot.remove(c);
+    if (G.caliper) w.pivot.add(cloneModel(G.caliper, mats));
+  }
+  car.findTails();
+  car.prepare?.(car.root);
+}
+
 /* ---------- assemble ---------- */
-export function buildCar(key) {
+export function buildCar(key, { prepare } = {}) {
   const S = SPECS[key];
   const root = new THREE.Group();   // position + heading
   const body = new THREE.Group();   // pitch + roll
@@ -541,10 +631,12 @@ export function buildCar(key) {
   });
 
   const tailMats = [];
-  shell.traverse((m) => { if (m.isMesh && m.material.emissive && m.material.emissive.r > 0.9 && m.material.emissive.g < 0.2) tailMats.push(m.material); });
-
-  return {
-    key, spec: S, root, body, wheels,
+  const car = {
+    key, spec: S, root, body, wheels, prepare,
+    findTails() {
+      tailMats.length = 0;
+      body.traverse((m) => { if (m.isMesh && m.material.emissive && m.material.emissive.r > 0.9 && m.material.emissive.g < 0.2) tailMats.push(m.material); });
+    },
     wheelbase: S.axles[0] - S.axles[1],
     length: S.L[1] - S.L[0],
     // steer: radians (+ = left), roll: distance rolled this frame (m)
@@ -558,4 +650,9 @@ export function buildCar(key) {
       for (const m of tailMats) m.emissiveIntensity = on ? 4 : 1.1;
     },
   };
+  car.findTails();
+  if (MODELS[key]) useModel(car);
+  else waiting.push(car);
+  prepare?.(root);
+  return car;
 }

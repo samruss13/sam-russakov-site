@@ -6,7 +6,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { PROJECTS } from '../js/content.js';
-import { buildCar, CAR_SPECS } from './cars.js';
+import { buildCar, CAR_SPECS, loadCarModels } from './cars.js';
 import { createDrive, LOCATIONS } from './drive.js';
 
 /* =========================================================
@@ -409,15 +409,16 @@ function buildGarage() {
   tr.position.set(W - 0.15, 1.14, -3.65);
   scene.add(tr);
 
-  // ---- the cars ----
-  const m240 = buildCar('m240i');
+  // ---- the cars (Blender models load with the other assets; the built-in ones stand in until then) ----
+  loadCarModels(manager);
+  const reflect = (root) => root.traverse((m) => { if (m.isMesh && m.material.isMeshStandardMaterial) { m.material.envMap = envTex; m.material.envMapIntensity = m.material.userData.env ?? 0.6; m.material.needsUpdate = true; } });
+  const m240 = buildCar('m240i', { prepare: reflect });
   m240.root.position.set(-2.55, 0, -4.7);
   m240.root.rotation.y = 0.1;
-  const gt3 = buildCar('gt3');
+  const gt3 = buildCar('gt3', { prepare: reflect });
   gt3.root.position.set(2.6, 0, -4.9);
   gt3.root.rotation.y = -0.1;
   for (const c of [m240, gt3]) {
-    c.root.traverse((m) => { if (m.isMesh && m.material.isMeshStandardMaterial) { m.material.envMap = envTex; m.material.envMapIntensity = m.material.userData.env ?? 0.6; } });
     scene.add(c.root);
     c.setWheels(0.18, 0);
   }
