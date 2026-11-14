@@ -1,16 +1,40 @@
 /* =========================================================
    Drive sounds, generated live with the Web Audio API (no files):
-   engine (inline-6), gear shifts, lift-off pops, tyre squeal,
-   gravel, wind, and a location ambience (desert wind / surf).
-   Recordings can replace the generated engine later.
+   engine (turbo inline-6), turbo whistle + blow-off, gear shifts, gear whine,
+   lift-off pops, tyre squeal, gravel, wind, and a location ambience.
+   Each car has its own voice (see VOICES). Recordings can replace the
+   generated engine later.
    ========================================================= */
 
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
-// per-car character
+/* Per-car character.
+   m240i: road car. Smooth, refined straight-six, soft turbo with a quiet "pssh" when you lift,
+          seamless automatic upshifts, a few light crackles, a muffled (sound-deadened) cabin.
+   gt3:   race car. Harsher, louder six with more harmonics, a lumpy idle, loud turbo with a
+          fluttering blow-off, straight-cut gear whine, hard sequential upshifts with a crack,
+          deep bangs on the overrun, and the boom and ring of a stripped-out shell. */
 const VOICES = {
-  m240i: { idle: 850, redline: 7000, cyl: 6, cutoff: 900, grit: 0.35, rasp: 0.10, pops: 0.6, vol: 0.9 },
-  gt3:   { idle: 1100, redline: 8400, cyl: 6, cutoff: 1500, grit: 0.7, rasp: 0.22, pops: 1.0, vol: 1.0 },
+  m240i: {
+    idle: 850, redline: 7000, cyl: 6, cutoff: 820, grit: 0.28, rasp: 0.08, vol: 0.86,
+    harm: [0, 1, 0.55, 0.32, 0.18, 0.11, 0.06, 0.04, 0.03, 0.02],
+    pops: 0.45, popBand: [450, 900], popVol: 0.55,
+    turbo: { whistle: 0.035, lo: 2600, hi: 6200, bov: 'soft', bovVol: 0.28 },
+    whine: 0,
+    shift: { dip: 0.62, time: 0.14, crack: 0 },
+    lope: 0,
+    boom: { f: 95, gain: 2, q: 0.9 }, ring: { f: 2600, gain: -4, q: 0.8 },   // insulated: no ring
+  },
+  gt3: {
+    idle: 1150, redline: 8400, cyl: 6, cutoff: 1500, grit: 0.75, rasp: 0.24, vol: 1.0,
+    harm: [0, 1, 0.72, 0.64, 0.46, 0.42, 0.3, 0.27, 0.2, 0.17, 0.12, 0.1, 0.08, 0.06],
+    pops: 1.0, popBand: [220, 600], popVol: 1.0,
+    turbo: { whistle: 0.06, lo: 3000, hi: 8200, bov: 'flutter', bovVol: 0.5 },
+    whine: 0.08,
+    shift: { dip: 0.08, time: 0.07, crack: 0.9 },
+    lope: 0.22,
+    boom: { f: 125, gain: 6, q: 1.4 }, ring: { f: 2200, gain: 5, q: 2.5 },
+  },
 };
 
 export function createSound() {
@@ -18,7 +42,8 @@ export function createSound() {
   let enabled = true;
   try { enabled = localStorage.getItem('garage-sound') !== 'off'; } catch {}
   let running = false;
-  let lastGear = 0, lastThrottle = 0, popWindow = 0, shiftT = 0, rpmSm = 0;
+  let lastGear = 0, lastThrottle = 0, popWindow = 0, shiftT = 0, rpmSm = 0, boost = 0;
+  const waves = {};
 
   function noiseBuffer(seconds = 2) {
     const b = ctx.createBuffer(1, ctx.sampleRate * seconds, ctx.sampleRate);
@@ -45,11 +70,10 @@ export function createSound() {
     comp.threshold.value = -8; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.2;
     master.connect(comp).connect(ctx.destination);
     const noise = noiseBuffer(3);
+    for (const [k, v] of Object.entries(VOICES)) waves[k] = ctx.createPeriodicWave(new Float32Array(v.harm), new Float32Array(v.harm.length));
 
-    /* engine: firing-frequency tone with rich harmonics + sub rumble + exhaust rasp */
-    const harm = new Float32Array([0, 1, 0.62, 0.48, 0.3, 0.26, 0.16, 0.12, 0.1, 0.06, 0.05, 0.04, 0.03]);
-    const wave = ctx.createPeriodicWave(harm, new Float32Array(harm.length));
-    const osc = ctx.createOscillator(); osc.setPeriodicWave(wave);
+    /* engine: firing-frequency tone + sub rumble + exhaust rasp -> grit -> tone -> body (boom, ring) */
+    const osc = ctx.createOscillator(); osc.setPeriodicWave(waves.m240i);
     const sub = ctx.createOscillator(); sub.type = 'sawtooth';
     const subG = ctx.createGain(); subG.gain.value = 0.35;
     const oscG = ctx.createGain(); oscG.gain.value = 0.7;
@@ -58,14 +82,39 @@ export function createSound() {
     const raspG = ctx.createGain(); raspG.gain.value = 0;
     const shaper = ctx.createWaveShaper(); shaper.oversample = '2x'; shaper.curve = softClip(0.3);
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 0.9;
+    const boom = ctx.createBiquadFilter(); boom.type = 'peaking';
+    const ring = ctx.createBiquadFilter(); ring.type = 'peaking';
     const engG = ctx.createGain(); engG.gain.value = 0;
     osc.connect(oscG).connect(shaper);
     sub.connect(subG).connect(shaper);
     rasp.connect(raspBP).connect(raspG).connect(shaper);
-    shaper.connect(lp).connect(engG).connect(master);
+    shaper.connect(lp).connect(boom).connect(ring).connect(engG).connect(master);
     osc.start(); sub.start();
+    // idle lope: a slow wobble added to the engine level near idle
+    const lope = ctx.createOscillator(); lope.frequency.value = 3.3;
+    const lopeG = ctx.createGain(); lopeG.gain.value = 0;
+    lope.connect(lopeG).connect(engG.gain); lope.start();
 
-    /* lift-off pops: short filtered noise bursts */
+    /* turbo whistle: narrow noise band + a faint pure tone, pitch follows boost */
+    const twBP = ctx.createBiquadFilter(); twBP.type = 'bandpass'; twBP.Q.value = 22;
+    const twTone = ctx.createOscillator(); twTone.type = 'sine';
+    const twToneG = ctx.createGain(); twToneG.gain.value = 0.35;
+    const twG = ctx.createGain(); twG.gain.value = 0;
+    noiseSource(noise).connect(twBP).connect(twG);
+    twTone.connect(twToneG).connect(twG); twTone.start();
+    twG.connect(master);
+
+    /* blow-off / flutter on lift */
+    const bovBP = ctx.createBiquadFilter(); bovBP.type = 'bandpass'; bovBP.Q.value = 0.9;
+    const bovG = ctx.createGain(); bovG.gain.value = 0;
+    noiseSource(noise).connect(bovBP).connect(bovG).connect(master);
+
+    /* straight-cut gear whine */
+    const whine = ctx.createOscillator(); whine.type = 'triangle';
+    const whineG = ctx.createGain(); whineG.gain.value = 0;
+    whine.connect(whineG).connect(master); whine.start();
+
+    /* lift-off pops and shift cracks: short filtered noise bursts */
     const popBP = ctx.createBiquadFilter(); popBP.type = 'bandpass'; popBP.frequency.value = 700; popBP.Q.value = 0.8;
     const popG = ctx.createGain(); popG.gain.value = 0;
     noiseSource(noise).connect(popBP).connect(popG).connect(master);
@@ -99,24 +148,60 @@ export function createSound() {
     const thG = ctx.createGain(); thG.gain.value = 0;
     noiseSource(noise).connect(thLP).connect(thG).connect(master);
 
-    nodes = { osc, sub, subG, oscG, raspBP, raspG, shaper, lp, engG, popG, popBP, sqG, sqA, sqB, grG, wnG, wnBP, amG, amLP, thG };
+    nodes = { osc, sub, subG, oscG, raspBP, raspG, shaper, lp, boom, ring, engG, lopeG, twBP, twTone, twG, bovBP, bovG, whine, whineG,
+      popG, popBP, sqG, sqA, sqB, grG, wnG, wnBP, amG, amLP, thG };
   }
 
   const set = (param, v, tc = 0.05) => param.setTargetAtTime(v, ctx.currentTime, tc);
 
-  function pop(strength) {
+  // apply the current car's fixed character (wave shape, body resonances)
+  function applyVoice(key) {
+    if (!nodes) return;
+    nodes.osc.setPeriodicWave(waves[key] || waves.m240i);
+    const v = voice;
+    nodes.boom.frequency.value = v.boom.f; nodes.boom.gain.value = v.boom.gain; nodes.boom.Q.value = v.boom.q;
+    nodes.ring.frequency.value = v.ring.f; nodes.ring.gain.value = v.ring.gain; nodes.ring.Q.value = v.ring.q;
+    nodes.shaper.curve = softClip(v.grit * 0.3);
+  }
+
+  function burst(strength, lo, hi, len = 0.06) {
     const t = ctx.currentTime, g = nodes.popG.gain;
-    nodes.popBP.frequency.setValueAtTime(500 + Math.random() * 700, t);
+    nodes.popBP.frequency.setValueAtTime(lo + Math.random() * (hi - lo), t);
     g.cancelScheduledValues(t);
     g.setValueAtTime(0.0001, t);
-    g.exponentialRampToValueAtTime(0.9 * strength, t + 0.004);
-    g.exponentialRampToValueAtTime(0.0001, t + 0.06 + Math.random() * 0.05);
+    g.exponentialRampToValueAtTime(Math.max(0.001, strength), t + 0.004);
+    g.exponentialRampToValueAtTime(0.0001, t + len + Math.random() * 0.05);
+  }
+  const pop = (strength) => burst(strength * voice.popVol, voice.popBand[0], voice.popBand[1]);
+
+  // turbo blow-off when lifting with boost: a soft falling "pssh", or a fluttering chatter
+  function blowOff(amount) {
+    const t = ctx.currentTime, g = nodes.bovG.gain, f = nodes.bovBP.frequency, tb = voice.turbo;
+    const peak = Math.max(0.002, tb.bovVol * amount);
+    g.cancelScheduledValues(t); f.cancelScheduledValues(t);
+    if (tb.bov === 'soft') {
+      f.setValueAtTime(2800, t); f.exponentialRampToValueAtTime(1100, t + 0.45);
+      g.setValueAtTime(0.0001, t);
+      g.exponentialRampToValueAtTime(peak, t + 0.02);
+      g.exponentialRampToValueAtTime(0.0001, t + 0.5);
+    } else {
+      f.setValueAtTime(1500, t); f.exponentialRampToValueAtTime(700, t + 0.32);
+      g.setValueAtTime(0.0001, t);
+      const n = 7;
+      for (let i = 0; i < n; i++) {
+        const ti = t + i * 0.042, a = peak * (1 - i / (n + 1));
+        g.exponentialRampToValueAtTime(Math.max(0.002, a), ti + 0.008);
+        g.exponentialRampToValueAtTime(0.0003, ti + 0.034);
+      }
+    }
   }
 
   return {
     get enabled() { return enabled; },
     // for checking from the console
-    debug: () => ctx && nodes ? { state: ctx.state, master: +master.gain.value.toFixed(3), engineHz: Math.round(nodes.osc.frequency.value), engine: +nodes.engG.gain.value.toFixed(3), squeal: +nodes.sqG.gain.value.toFixed(3), wind: +nodes.wnG.gain.value.toFixed(3), amb: +nodes.amG.gain.value.toFixed(3), gravel: +nodes.grG.gain.value.toFixed(3) } : { state: 'none' },
+    debug: () => ctx && nodes ? { state: ctx.state, master: +master.gain.value.toFixed(3), engineHz: Math.round(nodes.osc.frequency.value), engine: +nodes.engG.gain.value.toFixed(3),
+      boost: +boost.toFixed(2), turbo: +nodes.twG.gain.value.toFixed(3), whine: +nodes.whineG.gain.value.toFixed(3),
+      squeal: +nodes.sqG.gain.value.toFixed(3), wind: +nodes.wnG.gain.value.toFixed(3), amb: +nodes.amG.gain.value.toFixed(3), gravel: +nodes.grG.gain.value.toFixed(3) } : { state: 'none' },
     // call from a click/tap handler: browsers only allow audio after a user gesture
     unlock() {
       try {
@@ -136,8 +221,9 @@ export function createSound() {
       voice = VOICES[carKey] || VOICES.m240i;
       this.ambience = ambience;
       running = true;
-      rpmSm = voice.idle;
+      rpmSm = voice.idle; boost = 0; lastGear = 0; lastThrottle = 0;
       if (!ctx) return;
+      applyVoice(carKey);
       if (ctx.state === 'suspended') ctx.resume();
       set(master.gain, enabled ? 0.8 : 0, 0.3);
     },
@@ -172,20 +258,43 @@ export function createSound() {
       set(nodes.raspG.gain, v.rasp * (0.25 + thr * 0.9) * (0.4 + r01), 0.04);
       set(nodes.lp.frequency, v.cutoff * (0.55 + r01 * 1.6) + thr * 1400, 0.05);
       if (Math.abs(thr - lastThrottle) > 0.3) nodes.shaper.curve = softClip(v.grit * (0.3 + thr * 0.7));
-      // upshift: a short dip, like the ignition cut
-      if (s.gear > lastGear && lastGear > 0) shiftT = 0.11;
+
+      // upshift: the race car cuts hard and cracks; the road car's automatic barely dips
+      if (s.gear > lastGear && lastGear > 0) {
+        shiftT = v.shift.time;
+        if (v.shift.crack && thr > 0.3) burst(v.shift.crack, 260, 520, 0.05);
+      }
       lastGear = s.gear;
       shiftT = Math.max(0, shiftT - s.dt);
-      const dip = shiftT > 0 ? 0.15 : 1;
-      set(nodes.engG.gain, v.vol * 0.78 * (0.16 + thr * 0.24 + r01 * 0.14) * dip, shiftT > 0 ? 0.01 : 0.05);
+      const dip = shiftT > 0 ? v.shift.dip : 1;
+      set(nodes.engG.gain, v.vol * 0.78 * (0.16 + thr * 0.24 + r01 * 0.14) * dip, shiftT > 0 ? (v.shift.dip < 0.3 ? 0.008 : 0.04) : 0.05);
+      // lumpy idle (race cam): strongest at idle, gone by mid-revs
+      set(nodes.lopeG.gain, v.lope * v.vol * 0.1 * clamp(1 - r01 * 3, 0, 1) * (1 - thr * 0.7), 0.1);
 
-      // lift off at high revs -> a few pops and crackles over the next ~0.7 s
-      if (lastThrottle > 0.5 && thr < 0.1 && r01 > 0.45) popWindow = 0.7;
+      // turbo: boost builds with throttle and revs (with lag), whistle rises with it
+      const boostTarget = thr * clamp((r01 - 0.12) / 0.5, 0, 1);
+      boost += (boostTarget - boost) * clamp(s.dt * (boostTarget > boost ? 1.8 : 7), 0, 1);
+      set(nodes.twG.gain, v.turbo.whistle * boost * (0.4 + thr * 0.6), 0.05);
+      const twf = v.turbo.lo + (v.turbo.hi - v.turbo.lo) * boost;
+      set(nodes.twBP.frequency, twf, 0.05);
+      set(nodes.twTone.frequency, twf, 0.05);
+
+      // lift off with boost -> blow-off; at high revs -> pops and crackles over the next ~0.7 s
+      if (lastThrottle > 0.5 && thr < 0.1) {
+        if (boost > 0.25) blowOff(boost);
+        if (r01 > 0.45) popWindow = 0.7;
+      }
       if (popWindow > 0) {
         popWindow -= s.dt;
-        if (thr < 0.1 && Math.random() < 9 * v.pops * s.dt) pop(0.4 + Math.random() * 0.6 * v.pops);
+        if (thr < 0.1 && popWindow < 0.62 && Math.random() < 9 * v.pops * s.dt) pop(0.4 + Math.random() * 0.6 * v.pops);
       }
       lastThrottle = thr;
+
+      // straight-cut gear whine: pitch follows road speed, louder on the overrun
+      if (v.whine) {
+        set(nodes.whine.frequency, 120 + s.speed * 34, 0.05);
+        set(nodes.whineG.gain, v.whine * clamp(s.speed / 30, 0, 1) * (0.55 + (1 - thr) * 0.45) * (s.gear > 0 ? 1 : 0), 0.08);
+      } else set(nodes.whineG.gain, 0, 0.1);
 
       // tyres, dirt, wind
       const squeal = s.off ? 0 : clamp((s.slide - 2.5) / 8, 0, 1) * clamp(s.speed / 8, 0, 1);
