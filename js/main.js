@@ -349,12 +349,14 @@ const pMat = new THREE.ShaderMaterial({
     uDisperse: { value: 0 },
     uMouse: { value: new THREE.Vector2(99, 99) },
     uMouseK: { value: 0 }, // 0..1 strength of the pointer push, eased so particles glide back
+    uPush: { value: new THREE.Vector2(0.95, 0.5) }, // push radius, push distance (scaled with the car in layout())
     uPR: { value: renderer.getPixelRatio() },
     uColA: { value: new THREE.Vector3(0.89, 0.55, 0.04) },
     uColB: { value: new THREE.Vector3(1.0, 0.93, 0.62) },
   },
   vertexShader: /* glsl */`
     uniform float uTime, uIntro, uDisperse, uPR, uMouseK;
+    uniform vec2 uPush;
     uniform vec2 uMouse;
     attribute vec3 aDir;
     attribute float aRand;
@@ -380,8 +382,8 @@ const pMat = new THREE.ShaderMaterial({
 
       // mouse repulsion
       vec2 dm = wp.xy - uMouse;
-      float f = smoothstep(1.6, 0.0, length(dm)) * k * uMouseK;
-      wp.xy += normalize(dm + 1e-4) * f * 0.7;
+      float f = smoothstep(uPush.x, 0.0, length(dm)) * k * uMouseK;
+      wp.xy += normalize(dm + 1e-4) * f * uPush.y;
 
       vec4 mv = viewMatrix * wp;
       gl_Position = projectionMatrix * mv;
@@ -547,6 +549,8 @@ function layout() {
   });
   const orbScale = view.mobile ? Math.min(1, view.w / 7.2) : 1;
   orbGroup.scale.setScalar(orbScale);
+  // the push is a local dent in the dust: sized to the car, so a tap never moves most of it
+  pMat.uniforms.uPush.value.set(0.95 * orbScale, 0.5 * orbScale);
   orbGroup.userData.x = view.mobile ? 0 : view.w * 0.2;
   orbGroup.userData.y = view.mobile ? view.h * 0.16 : 0;
   pMat.uniforms.uPR.value = renderer.getPixelRatio();
