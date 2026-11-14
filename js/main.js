@@ -826,21 +826,22 @@ function frame() {
   mouse.k = lerp(mouse.k, inView ? 1 : 0, inView ? 0.15 : 0.05);
   if (inView) mouse.world.set(mouse.nx * view.w / 2, mouse.ny * view.h / 2);
 
-  // camera parallax
-  camera.position.x = lerp(camera.position.x, mouse.sx * 0.35, 0.1);
-  camera.position.y = lerp(camera.position.y, mouse.sy * 0.2, 0.1);
+  // orb: the pointer only pushes the particles; it doesn't turn, tilt or shift the car
+  const disperse = smooth(0, 1, state.current);
+
+  // camera parallax, faded in only once the car has dispersed (so the hero car stays put)
+  camera.position.x = lerp(camera.position.x, mouse.sx * 0.35 * disperse, 0.1);
+  camera.position.y = lerp(camera.position.y, mouse.sy * 0.2 * disperse, 0.1);
   camera.lookAt(0, 0, 0);
 
-  // orb
-  const disperse = smooth(0, 1, state.current);
   pMat.uniforms.uTime.value = t;
   pMat.uniforms.uIntro.value = state.intro;
   pMat.uniforms.uDisperse.value = disperse;
   pMat.uniforms.uMouse.value.copy(mouse.world);
   pMat.uniforms.uMouseK.value = mouse.k;
   // car spins slowly on a turntable; the whole stage tilts toward the viewer
-  orb.rotation.y = -0.6 + t * 0.22 + mouse.sx * 0.5;
-  orbGroup.rotation.x = 0.32 - mouse.sy * 0.15;
+  orb.rotation.y = -0.6 + t * 0.22;
+  orbGroup.rotation.x = 0.32;
   orbGroup.position.x = (orbGroup.userData.x || 0) * (1 - disperse) - disperse * 2;
   orbGroup.position.y = orbGroup.userData.y || 0;
   const ringFade = smooth(0.2, 1, state.intro) * (1 - smooth(0, 0.6, state.current));
@@ -850,7 +851,7 @@ function frame() {
     r.rotation.x = Math.PI / 2;
     r.scale.setScalar(0.9 + 0.1 * ringFade + disperse * 0.6);
   });
-  rings[0].rotation.z = t * 0.22 + mouse.sx * 0.5;
+  rings[0].rotation.z = t * 0.22;
   diaMat.opacity = ringFade;
 
   // planes
