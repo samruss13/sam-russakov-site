@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!-- Security policy: scripts only from this site (plus the exact inline scripts below, by hash),
+       fonts from Google Fonts, nothing from anywhere else. Regenerate the hashes if an inline script changes. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-AyaLIFODmNxkMF9Bx1qhyPLLg8bAMMTl+02z3E/KjWc=' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Sam Russakov</title>
   <meta name="description" content="Sam Russakov — analytical, detail-oriented and committed to doing the work right.">
@@ -13,8 +16,8 @@
   <link rel="stylesheet" href="css/style.css">
   <script type="importmap">
     { "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      "three": "./vendor/three/build/three.module.js",
+      "three/addons/": "./vendor/three/examples/jsm/"
     } }
   </script>
 </head>

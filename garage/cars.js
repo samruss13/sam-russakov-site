@@ -520,7 +520,7 @@ let loading = null;
 export function loadCarModels(manager) {
   if (loading) return loading;
   const draco = new DRACOLoader(manager);
-  draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/gltf/');
+  draco.setDecoderPath(new URL('../vendor/three/examples/jsm/libs/draco/gltf/', import.meta.url).href);
   const loader = new GLTFLoader(manager);
   loader.setDRACOLoader(draco);
   loading = Promise.all(Object.keys(SPECS).map((key) =>

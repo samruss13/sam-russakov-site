@@ -444,7 +444,7 @@ const texLoader = new THREE.TextureLoader(manager);
 manager.itemStart('gt3-particles');
 {
   const draco = new DRACOLoader();
-  draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/gltf/');
+  draco.setDecoderPath(new URL('../vendor/three/examples/jsm/libs/draco/gltf/', import.meta.url).href);
   const gl = new GLTFLoader();
   gl.setDRACOLoader(draco);
   gl.load(new URL('../garage/models/gt3.glb?v=7', import.meta.url).href, (g) => {

@@ -2,6 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <!-- Security policy: scripts only from this site (plus the exact inline scripts below, by hash),
+       fonts from Google Fonts, nothing from anywhere else. Regenerate the hashes if an inline script changes. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-DEvB7EcrRgVHTIZz49Tt7qgv3zgqDP+0uNGavYYZyZE=' 'sha256-wZk+9GDqBkHIcJJ0EdhbZSmYRUpvI7ITFDceXUSyfs0=' 'wasm-unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' data: blob:; object-src 'none'; base-uri 'self'; form-action 'none'; upgrade-insecure-requests">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Sam Russakov · The Garage</title>
   <meta name="description" content="Sam Russakov — analytical, detail-oriented and committed. Step into the garage, or take a car out on the track.">
@@ -13,8 +16,8 @@
   <link rel="stylesheet" href="garage.css">
   <script type="importmap">
     { "imports": {
-      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      "three": "../vendor/three/build/three.module.js",
+      "three/addons/": "../vendor/three/examples/jsm/"
     } }
   </script>
 </head>
@@ -39,6 +42,7 @@
       // slow start: offer the plain version, then switch automatically
       setTimeout(function () { if (!b.classList.contains('loaded') && !b.classList.contains('assets-ready')) b.classList.add('slow-start'); }, 12000);
       setTimeout(function () { if (!b.classList.contains('loaded') && !b.classList.contains('assets-ready')) window.__garageFallback(); }, 30000);
+      document.addEventListener('click', function (e) { if (e.target.closest && e.target.closest('[data-fallback]')) window.__garageFallback(); });
     })();
   </script>
 
@@ -49,7 +53,7 @@
       <div class="loader-count"><span id="loader-num">000</span><span class="loader-unit">MPH</span></div>
       <div class="loader-bar"><i id="loader-bar"></i></div>
       <p class="label">Opening the garage</p>
-      <p class="loader-slow">Taking a while? <button type="button" onclick="window.__garageFallback()">Open the simple version</button></p>
+      <p class="loader-slow">Taking a while? <button type="button" data-fallback>Open the simple version</button></p>
     </div>
   </div>
 
