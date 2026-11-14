@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 import { PROJECTS } from './content.js'; // edit your four strengths in js/content.js
 
@@ -77,7 +79,12 @@ float snoise(vec3 v){
   return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
 }`;
 
-/* ---------- Gold particle car (F8x M4-based GT3-style race car) ----------
+/* ---------- Gold particle car ----------
+   The particles are sampled from the garage's M4 GT3 model (garage/models/gt3.glb) once it
+   loads; see sampleGT3() below. CAR() is the built-in fallback shape, used until then or if the
+   model can't load. Its notes follow.
+
+   Fallback: F8x M4-based GT3-style race car
    The car is sampled procedurally: the M4 coupe's long hood, notchback roof and
    kinked rear side window, widened with boxy race fender flares and dropped low,
    plus GT3-style aero: big splitter + canards, hood louvers, fender exit vents,
@@ -262,6 +269,70 @@ for (let i = 0; i < COUNT; i++) {
   pDir.set([(Math.random() - 0.5) * 30, (Math.random() - 0.5) * 18, -14 + Math.random() * 16], i * 3);
   pRand[i] = Math.random();
 }
+/* Resample the particles from the garage's GT3 model. Each part of the model gets a share of the
+   particles (by surface area x weight) and a glow: lamps, gold trim and shut lines glow, glass and
+   the hidden insides stay dim. The model is in the garage's frame (+z forward, ground at y = 0);
+   here the front points to +x and the ground is at y = -0.75. */
+const GT3_LOOK = {
+  //        weight  glow
+  paint:    [1.0,  0.34], gold:    [1.1, 0.8],  carbon:  [0.85, 0.46], gloss:   [0.6, 0.5],
+  trim:     [0.6,  0.4],  chrome:  [0.9, 0.9],  gap:     [0.5,  0.85], glass:   [0.3, 0.07],
+  lens:     [0.4,  0.6],  lens_red:[0.4, 0.7],  head:    [1.0,  1.0],  tail:    [1.0, 1.0],
+  housing:  [0.35, 0.3],  grille:  [0.45, 0.12], interior: [0.06, 0.12], seat:  [0.12, 0.2],
+  well:     [0.08, 0.05], tire:    [0.7,  0.18], rim:     [1.0,  0.75], barrel:  [0.15, 0.2],
+  disc:     [0.35, 0.4],  caliper: [0.6,  0.9],
+};
+function sampleGT3(gltf) {
+  const tris = [], cum = [], glow = [];
+  let total = 0;
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+  const addMesh = (mesh, matrix) => {
+    const look = GT3_LOOK[mesh.material.name] || [0.4, 0.3];
+    const pos = mesh.geometry.attributes.position, idx = mesh.geometry.index;
+    const n = idx ? idx.count : pos.count;
+    for (let i = 0; i < n; i += 3) {
+      const ia = idx ? idx.getX(i) : i, ib = idx ? idx.getX(i + 1) : i + 1, ic = idx ? idx.getX(i + 2) : i + 2;
+      a.fromBufferAttribute(pos, ia).applyMatrix4(matrix);
+      b.fromBufferAttribute(pos, ib).applyMatrix4(matrix);
+      c.fromBufferAttribute(pos, ic).applyMatrix4(matrix);
+      const area = b.clone().sub(a).cross(c.clone().sub(a)).length() * 0.5;
+      if (area <= 0) continue;
+      total += area * look[0];
+      tris.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+      cum.push(total); glow.push(look[1]);
+    }
+  };
+  gltf.scene.updateMatrixWorld(true);
+  const part = (n) => gltf.scene.getObjectByName(n);
+  part('body')?.traverse((m) => { if (m.isMesh) addMesh(m, m.matrixWorld); });
+  // four wheels (+ calipers) at the GT3's axles and track; the right-hand ones turned to face out
+  const WHEEL = { r: 0.345, axles: [1.44, -1.477], track: [0.87, 0.875] };
+  for (const [i, za] of WHEEL.axles.entries()) {
+    for (const side of [1, -1]) {
+      const place = new THREE.Matrix4().makeTranslation(side * WHEEL.track[i], WHEEL.r, za)
+        .multiply(new THREE.Matrix4().makeRotationY(side < 0 ? Math.PI : 0));
+      for (const n of ['wheel', 'caliper']) part(n)?.traverse((m) => { if (m.isMesh) addMesh(m, place.clone().multiply(m.matrixWorld)); });
+    }
+  }
+  if (!total) return false;
+  const R = Math.random;
+  for (let i = 0; i < COUNT; i++) {
+    const r = R() * total;
+    let lo = 0, hi = cum.length - 1;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cum[mid] < r) lo = mid + 1; else hi = mid; }
+    let u = R(), v = R();
+    if (u + v > 1) { u = 1 - u; v = 1 - v; }
+    const t = lo * 9;
+    const px = tris[t] + (tris[t + 3] - tris[t]) * u + (tris[t + 6] - tris[t]) * v;
+    const py = tris[t + 1] + (tris[t + 4] - tris[t + 1]) * u + (tris[t + 7] - tris[t + 1]) * v;
+    const pz = tris[t + 2] + (tris[t + 5] - tris[t + 2]) * u + (tris[t + 8] - tris[t + 2]) * v;
+    // garage frame -> this scene: front to +x, ground at -0.75 (+0.08 lift as before), centred nose-to-wing
+    pPos.set([pz + 0.22, py - 0.75 + 0.08, -px], i * 3);
+    pGlow[i] = glow[lo] * (0.85 + R() * 0.3);
+  }
+  return true;
+}
+
 const pGeo = new THREE.BufferGeometry();
 pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
 pGeo.setAttribute('aDir', new THREE.BufferAttribute(pDir, 3));
@@ -366,6 +437,23 @@ const diamonds = [0, 1, 2, 3].map((i) => {
 /* ---------- Project planes ---------- */
 const manager = new THREE.LoadingManager();
 const texLoader = new THREE.TextureLoader(manager);
+
+// the GT3 model for the particle car (the loader waits for it, so the intro forms the right car)
+manager.itemStart('gt3-particles');
+{
+  const draco = new DRACOLoader();
+  draco.setDecoderPath('https://unpkg.com/three@0.160.0/examples/jsm/libs/draco/gltf/');
+  const gl = new GLTFLoader();
+  gl.setDRACOLoader(draco);
+  gl.load(new URL('../garage/models/gt3.glb?v=7', import.meta.url).href, (g) => {
+    if (sampleGT3(g)) { pGeo.attributes.position.needsUpdate = true; pGeo.attributes.aGlow.needsUpdate = true; }
+    draco.dispose();
+    manager.itemEnd('gt3-particles');
+  }, undefined, (e) => {
+    console.warn('GT3 model not loaded; keeping the built-in particle car.', e);
+    manager.itemEnd('gt3-particles');
+  });
+}
 const planeGeo = new THREE.PlaneGeometry(1, 1, 32, 32);
 const planesGroup = new THREE.Group();
 scene.add(planesGroup);
