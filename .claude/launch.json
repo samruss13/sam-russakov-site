@@ -4,14 +4,33 @@
     {
       "name": "site",
       "runtimeExecutable": "python",
-      "runtimeArgs": [".claude/serve.py", "5173"],
+      "runtimeArgs": [
+        ".claude/serve.py",
+        "5173"
+      ],
       "port": 5173
     },
     {
       "name": "deploy-test",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "http.server", "5174", "--directory", "deploy"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "5174",
+        "--directory",
+        "deploy"
+      ],
       "port": 5174
+    },
+    {
+      "name": "site-alt",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        ".claude/serve.py",
+        "5176"
+      ],
+      "port": 5176,
+      "autoPort": false
     }
   ]
 }
